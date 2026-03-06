@@ -15,24 +15,88 @@ Captain turns pi into a multi-agent orchestration platform. Define typed pipelin
 
 | Tool | Purpose |
 |------|---------|
-| `captain_agent` | Define reusable agent configs (name, tools, model) |
+| `captain_agent` | Define a reusable named agent (model, tools, systemPrompt) |
 | `captain_define` | Define a pipeline from a JSON Runnable spec |
 | `captain_load` | Load a precreated pipeline from a preset or JSON file |
 | `captain_run` | Execute a defined pipeline with input |
 | `captain_status` | Check step-by-step results of a pipeline |
 | `captain_list` | List all defined pipelines |
+| `captain_generate` | Auto-generate a pipeline from a goal description |
+
+## Step Fields
+
+Each step runs as an in-process pi SDK session (`createAgentSession`). All config fields are optional — defaults are sensible.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `label` | string | required | Display name for the step |
+| `prompt` | string | required | Prompt sent to the agent. Supports `$INPUT`, `$ORIGINAL` |
+| `agent` | string | — | Named agent (model/tools/systemPrompt from its definition) |
+| `model` | string | `"sonnet"` | Model identifier (pattern-matched, e.g. `"flash"`, `"claude-opus-4-5"`). Overrides agent default |
+| `tools` | string[] | `["read","bash","edit","write"]` | Tool names to enable. Overrides agent default |
+| `systemPrompt` | string | — | System prompt override. Overrides agent default |
+| `skills` | string[] | — | Additional skill file paths to inject into the session |
+| `extensions` | string[] | — | Additional extension file paths to load into the session |
+| `jsonOutput` | boolean | `false` | Ask the agent to produce structured JSON output |
+| `gate` | Gate | required | Validation after the step runs |
+| `onFail` | OnFail | required | What to do when the gate fails |
+| `transform` | Transform | required | How to pass output to the next step |
 
 ## Quick Start
 
-### 1. Define agents
+You can configure a step inline or reference a named agent — or both (inline fields override agent defaults).
+
+### Option A — Inline steps (no agent setup needed)
+
+```json
+{
+  "kind": "sequential",
+  "steps": [
+    {
+      "kind": "step",
+      "label": "Research",
+      "model": "sonnet",
+      "tools": ["read", "bash"],
+      "systemPrompt": "You are a thorough researcher.",
+      "prompt": "Research the following topic:\n$ORIGINAL",
+      "gate": { "type": "none" },
+      "onFail": { "action": "skip" },
+      "transform": { "kind": "full" }
+    },
+    {
+      "kind": "step",
+      "label": "Implement",
+      "model": "sonnet",
+      "tools": ["read", "bash", "edit", "write"],
+      "prompt": "Based on this research:\n$INPUT\n\nImplement the solution for:\n$ORIGINAL",
+      "gate": { "type": "command", "value": "bun test" },
+      "onFail": { "action": "retry", "max": 3 },
+      "transform": { "kind": "full" }
+    },
+    {
+      "kind": "step",
+      "label": "Review",
+      "model": "flash",
+      "tools": ["read"],
+      "jsonOutput": true,
+      "prompt": "Review this implementation:\n$INPUT\n\nOriginal request: $ORIGINAL\n\nReturn JSON: {score, issues[], verdict}",
+      "gate": { "type": "user", "value": true },
+      "onFail": { "action": "skip" },
+      "transform": { "kind": "summarize" }
+    }
+  ]
+}
+```
+
+### Option B — Named agents (reusable across pipelines)
+
+Define once, reference by name in any step:
 
 ```
 captain_agent: name="researcher", description="Web research agent", tools="read,bash", model="sonnet"
 captain_agent: name="coder", description="Implementation agent", tools="read,bash,edit,write", model="sonnet"
-captain_agent: name="reviewer", description="Code review agent", tools="read,bash", model="sonnet"
+captain_agent: name="reviewer", description="Code review agent", tools="read,bash", model="flash"
 ```
-
-### 2. Define a pipeline
 
 ```json
 {
@@ -42,7 +106,6 @@ captain_agent: name="reviewer", description="Code review agent", tools="read,bas
       "kind": "step",
       "label": "Research",
       "agent": "researcher",
-      "description": "Gather information",
       "prompt": "Research the following topic thoroughly:\n$ORIGINAL",
       "gate": { "type": "none" },
       "onFail": { "action": "skip" },
@@ -52,27 +115,32 @@ captain_agent: name="reviewer", description="Code review agent", tools="read,bas
       "kind": "step",
       "label": "Implement",
       "agent": "coder",
-      "description": "Write the code",
-      "prompt": "Based on this research:\n$INPUT\n\nImplement the solution for:\n$ORIGINAL",
+      "prompt": "Based on this research:\n$INPUT\n\nImplement: $ORIGINAL",
       "gate": { "type": "command", "value": "bun test" },
       "onFail": { "action": "retry", "max": 3 },
       "transform": { "kind": "full" }
-    },
-    {
-      "kind": "step",
-      "label": "Review",
-      "agent": "reviewer",
-      "description": "Review the implementation",
-      "prompt": "Review this implementation:\n$INPUT\n\nOriginal request: $ORIGINAL",
-      "gate": { "type": "user", "value": true },
-      "onFail": { "action": "skip" },
-      "transform": { "kind": "summarize" }
     }
   ]
 }
 ```
 
-### 3. Run it
+### Option C — Mixed (agent defaults + inline overrides)
+
+```json
+{
+  "kind": "step",
+  "label": "Fast review",
+  "agent": "reviewer",
+  "model": "flash",
+  "jsonOutput": true,
+  "prompt": "Review $INPUT. Return JSON: {score, issues[]}",
+  "gate": { "type": "none" },
+  "onFail": { "action": "skip" },
+  "transform": { "kind": "full" }
+}
+```
+
+### Run it
 
 ```
 captain_run: name="my-pipeline", input="Build a REST API for user management"

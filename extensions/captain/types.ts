@@ -102,22 +102,49 @@ export type MergeStrategy =
 
 // ── Composition Types (infinitely nestable) ────────────────────────────────
 
-/** Atomic unit — a single agent invocation */
+/** Atomic unit — a single `pi --print` invocation */
 export interface Step {
 	kind: "step";
 	label: string;
-	agent: AgentName; // autocompletes known agents, validated at runtime
-	description: string;
-	prompt: string; // supports $INPUT, $ORIGINAL, ${var} interpolation
+
+	// ── Agent (optional) ──────────────────────────────────────────────────
+	/** Named agent to use. Inline fields below override agent defaults. */
+	agent?: AgentName;
+
+	// ── Inline agent config (overrides named agent when provided) ─────────
+	/** Model identifier (e.g. "sonnet", "flash"). Passed as --model. */
+	model?: string;
+	/** Tool names to enable. Passed as --tools read,bash,edit. */
+	tools?: string[];
+	/** System prompt text. Passed as --system-prompt. */
+	systemPrompt?: string;
+	/** Skill file paths. Each passed as --skill <path>. */
+	skills?: string[];
+	/** Extension file paths. Each passed as --extension <path>. */
+	extensions?: string[];
+	/** If true, pass --mode json to get structured JSON output. */
+	jsonOutput?: boolean;
+
+	description?: string;
+	prompt: string; // supports $INPUT, $ORIGINAL interpolation
+
+	/**
+	 * Max agent turns before stopping (default: unlimited).
+	 * Declared intent — will map to `pi --print --max-turns N` once supported.
+	 * Tracking: https://github.com/badlogic/pi-mono/issues/1898
+	 */
+	maxTurns?: number;
+
+	/**
+	 * Max output tokens per step (default: unlimited).
+	 * Declared intent — will map to `pi --print --max-tokens N` once supported.
+	 * Tracking: https://github.com/badlogic/pi-mono/issues/1898
+	 */
+	maxTokens?: number;
+
 	gate: Gate;
 	onFail: OnFail;
 	transform: Transform;
-
-	/** Max LLM turns before forcing stop (default: 10). Prevents runaway loops. */
-	maxTurns?: number;
-
-	/** Max output tokens per LLM call in this step (default: 8192). */
-	maxTokens?: number;
 }
 
 /** Sequential — run in order, output chains via $INPUT */

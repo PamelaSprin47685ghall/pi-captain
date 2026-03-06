@@ -1,18 +1,25 @@
 // ── Recursive Pipeline Execution Engine ────────────────────────────────────
+// Each Step runs via the pi SDK (createAgentSession) — no subprocess needed.
 
-import type {
-	AgentContext,
-	AgentLoopConfig,
-	AgentMessage,
-	AgentTool,
-} from "@mariozechner/pi-agent-core";
-import { agentLoop } from "@mariozechner/pi-agent-core";
 import type { Api, Model } from "@mariozechner/pi-ai";
 import { complete } from "@mariozechner/pi-ai";
-import { convertToLlm } from "@mariozechner/pi-coding-agent";
+import {
+	createAgentSession,
+	createBashTool,
+	createEditTool,
+	createFindTool,
+	createGrepTool,
+	createLsTool,
+	createReadTool,
+	createWriteTool,
+	DefaultResourceLoader,
+	getAgentDir,
+	SessionManager,
+	SettingsManager,
+	type Tool,
+} from "@mariozechner/pi-coding-agent";
 import { evaluateGate, type GateResult } from "./gates.js";
 import { mergeOutputs } from "./merge.js";
-import { resolveTools } from "./tool-resolver.js";
 import type {
 	Agent,
 	Gate,
@@ -27,8 +34,9 @@ import type {
 } from "./types.js";
 import { createWorktree, removeWorktree } from "./worktree.js";
 
-/** Model registry interface — matches ModelRegistry from pi-coding-agent */
+/** Model registry interface — for LLM gates and merge strategies */
 export interface ModelRegistryLike {
+	getAll(): Model<Api>[];
 	find(provider: string, modelId: string): Model<Api> | undefined;
 	getApiKey(model: Model<Api>): Promise<string | undefined>;
 }
@@ -41,6 +49,7 @@ export interface ExecutorContext {
 		opts?: { signal?: AbortSignal },
 	) => Promise<{ stdout: string; stderr: string; code: number }>;
 	agents: Record<string, Agent>;
+	/** Fallback model used by LLM gates and merge strategies */
 	model: Model<Api>;
 	modelRegistry: ModelRegistryLike;
 	apiKey: string;
@@ -51,9 +60,6 @@ export interface ExecutorContext {
 	onStepStart?: (label: string) => void;
 	onStepEnd?: (result: StepResult) => void;
 	pipelineName: string;
-
-	/** Extension-registered custom tools, available to pipeline agents */
-	extensionTools?: Map<string, AgentTool>;
 }
 
 /** Execute any Runnable recursively, returning output text */
@@ -63,9 +69,7 @@ export async function executeRunnable(
 	original: string,
 	ectx: ExecutorContext,
 ): Promise<{ output: string; results: StepResult[] }> {
-	if (ectx.signal?.aborted) {
-		return { output: "(cancelled)", results: [] };
-	}
+	if (ectx.signal?.aborted) return { output: "(cancelled)", results: [] };
 
 	switch (runnable.kind) {
 		case "step":
@@ -86,6 +90,167 @@ export async function executeRunnable(
 
 // ── Step Execution ─────────────────────────────────────────────────────────
 
+/** Map tool name strings (e.g. "read", "bash") to SDK Tool instances for a given cwd. */
+function resolveTools(names: string[], cwd: string): Tool[] {
+	return names.flatMap((name) => {
+		switch (name) {
+			case "read":
+				return [createReadTool(cwd)];
+			case "bash":
+				return [createBashTool(cwd)];
+			case "edit":
+				return [createEditTool(cwd)];
+			case "write":
+				return [createWriteTool(cwd)];
+			case "grep":
+				return [createGrepTool(cwd)];
+			case "find":
+				return [createFindTool(cwd)];
+			case "ls":
+				return [createLsTool(cwd)];
+			default:
+				return [];
+		}
+	});
+}
+
+/** Resolve a model identifier string (e.g. "sonnet") to a Model object via the registry. */
+function resolveModel(
+	pattern: string,
+	registry: ModelRegistryLike,
+	fallback: Model<Api>,
+): Model<Api> {
+	const all = registry.getAll();
+	const lower = pattern.toLowerCase();
+	// Exact id match first, then partial match on id/name
+	return (
+		all.find((m) => m.id.toLowerCase() === lower) ??
+		all.find(
+			(m) =>
+				m.id.toLowerCase().includes(lower) ||
+				(m as { name?: string }).name?.toLowerCase().includes(lower),
+		) ??
+		fallback
+	);
+}
+
+/** Resolve agent, create an SDK session, run the prompt, evaluate gate, apply transform. */
+async function runStepCore(
+	step: Step,
+	input: string,
+	original: string,
+	ectx: ExecutorContext,
+): Promise<{
+	status: "passed" | "failed" | "skipped";
+	output: string;
+	gateResult?: GateResult;
+	error?: string;
+}> {
+	const agent = step.agent ? ectx.agents[step.agent] : undefined;
+	if (step.agent && !agent) {
+		const available = Object.keys(ectx.agents).join(", ");
+		throw new Error(
+			`Agent "${step.agent}" not found. Available agents: ${available}`,
+		);
+	}
+
+	const prompt = interpolatePrompt(step.prompt, input, original);
+
+	// ── Resolve model ────────────────────────────────────────────────────
+	const modelStr = step.model ?? agent?.model ?? "sonnet";
+	const model = resolveModel(modelStr, ectx.modelRegistry, ectx.model);
+
+	// ── Resolve tools ────────────────────────────────────────────────────
+	const toolNames = step.tools ??
+		agent?.tools ?? ["read", "bash", "edit", "write"];
+	const tools = resolveTools(toolNames, ectx.cwd);
+
+	// ── Build resource loader (skills, extensions, system prompt) ────────
+	const systemPrompt = step.systemPrompt ?? agent?.systemPrompt;
+
+	const loader = new DefaultResourceLoader({
+		cwd: ectx.cwd,
+		agentDir: getAgentDir(),
+		...(systemPrompt && { systemPrompt }),
+		...(step.extensions?.length > 0 && {
+			additionalExtensionPaths: step.extensions,
+		}),
+		...(step.skills?.length > 0 && {
+			additionalSkillPaths: step.skills,
+		}),
+	});
+	await loader.reload();
+
+	// ── Create in-process session ─────────────────────────────────────────
+	const { session } = await createAgentSession({
+		cwd: ectx.cwd,
+		model,
+		tools,
+		resourceLoader: loader,
+		sessionManager: SessionManager.inMemory(),
+		settingsManager: SettingsManager.inMemory({
+			compaction: { enabled: false },
+		}),
+	});
+
+	// Wire abort signal → session.abort()
+	const onAbort = () => session.abort();
+	ectx.signal?.addEventListener("abort", onAbort);
+
+	// Collect text output from streaming events
+	let output = "";
+	const unsub = session.subscribe((event) => {
+		if (
+			event.type === "message_update" &&
+			event.assistantMessageEvent.type === "text_delta"
+		) {
+			output += event.assistantMessageEvent.delta;
+		}
+	});
+
+	try {
+		await session.prompt(prompt);
+	} finally {
+		unsub();
+		ectx.signal?.removeEventListener("abort", onAbort);
+		session.dispose();
+	}
+
+	output = output.trim();
+
+	const gateResult = await evaluateGate(step.gate, output, {
+		exec: ectx.exec,
+		confirm: ectx.confirm,
+		hasUI: ectx.hasUI,
+		cwd: ectx.cwd,
+		signal: ectx.signal,
+		model: ectx.model,
+		apiKey: ectx.apiKey,
+		modelRegistry: ectx.modelRegistry,
+	});
+
+	if (!gateResult.passed) {
+		const failResult = await handleFailure(
+			step,
+			input,
+			original,
+			output,
+			gateResult,
+			ectx,
+			0,
+		);
+		const transformed = await applyTransform(
+			step.transform,
+			failResult.output,
+			ectx,
+		);
+		return { ...failResult, output: transformed, gateResult };
+	}
+
+	const transformed = await applyTransform(step.transform, output, ectx);
+	return { status: "passed", output: transformed, gateResult };
+}
+
 async function executeStep(
 	step: Step,
 	input: string,
@@ -103,71 +268,11 @@ async function executeStep(
 	};
 
 	try {
-		// Validate agent exists before proceeding
-		const agent = ectx.agents[step.agent];
-		if (!agent) {
-			const available = Object.keys(ectx.agents).join(", ");
-			throw new Error(
-				`Agent "${step.agent}" not found. Available agents: ${available}`,
-			);
-		}
-
-		// Resolve prompt with variable interpolation
-		const prompt = interpolatePrompt(step.prompt, input, original);
-
-		// Resolve the agent's model (or fall back to current)
-		const model = resolveModel(agent, ectx);
-		const apiKey = ectx.apiKey;
-
-		// Resolve the agent's declared tools into executable AgentTool instances.
-		// If no tools resolve, the loop just does a single LLM call and stops.
-		const tools = resolveTools(agent.tools, ectx.cwd, ectx.extensionTools);
-
-		const output = await runAgentLoop(
-			step,
-			agent,
-			prompt,
-			tools,
-			model,
-			apiKey,
-			ectx,
-		);
-
-		// Evaluate gate (model/apiKey/modelRegistry passed for LLM gate support)
-		const gateResult = await evaluateGate(step.gate, output, {
-			exec: ectx.exec,
-			confirm: ectx.confirm,
-			hasUI: ectx.hasUI,
-			cwd: ectx.cwd,
-			signal: ectx.signal,
-			model: ectx.model,
-			apiKey: ectx.apiKey,
-			modelRegistry: ectx.modelRegistry,
-		});
-
-		result.gateResult = gateResult;
-
-		if (!gateResult.passed) {
-			// Handle failure according to onFail strategy
-			const failResult = await handleFailure(
-				step,
-				input,
-				original,
-				output,
-				gateResult,
-				ectx,
-				0,
-			);
-			result.status = failResult.status;
-			result.output = failResult.output;
-			result.error = failResult.error;
-		} else {
-			result.status = "passed";
-			result.output = output;
-		}
-
-		// Apply transform to the output before passing downstream
-		result.output = await applyTransform(step.transform, result.output, ectx);
+		const core = await runStepCore(step, input, original, ectx);
+		result.status = core.status;
+		result.output = core.output;
+		result.gateResult = core.gateResult;
+		result.error = core.error;
 	} catch (err) {
 		result.status = "failed";
 		result.error = err instanceof Error ? err.message : String(err);
@@ -179,169 +284,8 @@ async function executeStep(
 	return { output: result.output, results: [result] };
 }
 
-// ── Agentic Loop Runner ───────────────────────────────────────────────────
-
-/**
- * Run a full agentic loop for a step that has tools.
- * The LLM can call tools (read, bash, edit, etc.) in a multi-turn loop
- * until it produces a final text response or hits the turn limit.
- */
-async function runAgentLoop(
-	step: Step,
-	agent: Agent,
-	prompt: string,
-	tools: AgentTool[],
-	model: Model<Api>,
-	apiKey: string,
-	ectx: ExecutorContext,
-): Promise<string> {
-	// Build initial context for the loop
-	const agentContext: AgentContext = {
-		systemPrompt: agent.systemPrompt ?? "",
-		messages: [], // empty — agentLoop() prepends the prompts array
-		tools,
-	};
-
-	// Safety: create our own AbortController to enforce maxTurns
-	const maxTurns = step.maxTurns ?? 10;
-	const loopAbort = new AbortController();
-
-	// Forward parent abort signal to our loop controller
-	if (ectx.signal) {
-		if (ectx.signal.aborted) {
-			loopAbort.abort();
-		} else {
-			ectx.signal.addEventListener("abort", () => loopAbort.abort(), {
-				once: true,
-			});
-		}
-	}
-
-	// Build loop config
-	const config: AgentLoopConfig = {
-		model,
-		apiKey,
-		maxTokens: step.maxTokens ?? 8192,
-		signal: loopAbort.signal,
-
-		// Standard pi converter: handles user/assistant/toolResult,
-		// filters out custom message types
-		convertToLlm,
-
-		// No auto-continue: we don't want follow-up messages
-		getFollowUpMessages: async () => [],
-	};
-
-	// The prompt message to kick off the loop
-	const userMessage: AgentMessage = {
-		role: "user",
-		content: [{ type: "text", text: prompt }],
-		timestamp: Date.now(),
-	};
-
-	// Run the agentic loop
-	const stream = agentLoop(
-		[userMessage],
-		agentContext,
-		config,
-		loopAbort.signal,
-	);
-
-	// Consume events, collecting text output
-	const result = await consumeAgentEvents(
-		stream,
-		loopAbort,
-		maxTurns,
-		step.label,
-		ectx,
-	);
-	return result;
-}
-
-/** Extract text content from an assistant message */
-function extractAssistantText(msg: {
-	role: string;
-	content: ReadonlyArray<{ type: string; text?: string }>;
-}): string {
-	return msg.content
-		.filter((c): c is { type: "text"; text: string } => c.type === "text")
-		.map((c) => c.text)
-		.join("\n");
-}
-
-/** Handle a single agent loop event, updating state and returning extracted text if any */
-function handleAgentEvent(
-	event: { type: string; [key: string]: unknown },
-	turnState: { count: number },
-	maxTurns: number,
-	loopAbort: AbortController,
-	stepLabel: string,
-	ectx: ExecutorContext,
-): string | undefined {
-	switch (event.type) {
-		case "turn_start":
-			turnState.count++;
-			if (turnState.count > maxTurns) {
-				loopAbort.abort();
-			}
-			return undefined;
-
-		case "message_end": {
-			const msg = event.message as
-				| {
-						role: string;
-						content: ReadonlyArray<{ type: string; text?: string }>;
-				  }
-				| undefined;
-			if (msg?.role === "assistant") {
-				return extractAssistantText(msg) || undefined;
-			}
-			return undefined;
-		}
-
-		case "tool_execution_start":
-			ectx.onStepStart?.(`${stepLabel} → ${event.toolName as string}`);
-			return undefined;
-
-		default:
-			return undefined;
-	}
-}
-
-/** Consume agent loop events and return final assistant text */
-async function consumeAgentEvents(
-	stream: AsyncIterable<{ type: string; [key: string]: unknown }>,
-	loopAbort: AbortController,
-	maxTurns: number,
-	stepLabel: string,
-	ectx: ExecutorContext,
-): Promise<string> {
-	let lastAssistantText = "";
-	const turnState = { count: 0 };
-
-	for await (const event of stream) {
-		if (loopAbort.signal.aborted) break;
-		const text = handleAgentEvent(
-			event,
-			turnState,
-			maxTurns,
-			loopAbort,
-			stepLabel,
-			ectx,
-		);
-		if (text) lastAssistantText = text;
-	}
-
-	return lastAssistantText;
-}
-
 // ── Shared Gate + OnFail for Composition Nodes ────────────────────────────
 
-/**
- * Evaluate a gate on a composition node's output and handle failures.
- * Shared by executeSequential, executePool, and executeParallel.
- * Returns the (possibly retried) output+results, plus a synthetic StepResult for the gate.
- */
 async function gateCheck(
 	output: string,
 	results: StepResult[],
@@ -352,7 +296,6 @@ async function gateCheck(
 	ectx: ExecutorContext,
 	retryCount: number,
 ): Promise<{ output: string; results: StepResult[] }> {
-	// No gate → pass through unchanged
 	if (!gate || gate.type === "none") return { output, results };
 
 	const gateResult = await evaluateGate(gate, output, {
@@ -366,7 +309,6 @@ async function gateCheck(
 		modelRegistry: ectx.modelRegistry,
 	});
 
-	// Emit a synthetic StepResult so the gate shows in pipeline status
 	const gateStepResult: StepResult = {
 		label: `[gate] ${scopeLabel}`,
 		status: gateResult.passed ? "passed" : "failed",
@@ -376,45 +318,21 @@ async function gateCheck(
 	};
 	ectx.onStepEnd?.(gateStepResult);
 
-	if (gateResult.passed) {
+	if (gateResult.passed)
 		return { output, results: [...results, gateStepResult] };
-	}
-
-	// Gate failed — apply onFail strategy
-	if (!onFail) {
-		// No onFail defined — treat as hard failure, return as-is with gate result
-		return { output, results: [...results, gateStepResult] };
-	}
+	if (!onFail) return { output, results: [...results, gateStepResult] };
 
 	switch (onFail.action) {
-		case "retry": {
+		case "retry":
+		case "retryWithDelay": {
 			const max = onFail.max ?? 3;
 			if (retryCount >= max) {
 				gateStepResult.error = `Gate failed after ${max} retries: ${gateResult.reason}`;
 				return { output, results: [...results, gateStepResult] };
 			}
-			// Re-run the entire scope, then gate-check again (recursive)
-			const retried = await rerunFn();
-			return gateCheck(
-				retried.output,
-				retried.results,
-				gate,
-				onFail,
-				scopeLabel,
-				rerunFn,
-				ectx,
-				retryCount + 1,
-			);
-		}
-
-		case "retryWithDelay": {
-			// Retry with a configurable delay between attempts
-			const max = onFail.max ?? 3;
-			if (retryCount >= max) {
-				gateStepResult.error = `Gate failed after ${max} retries (with ${onFail.delayMs}ms delay): ${gateResult.reason}`;
-				return { output, results: [...results, gateStepResult] };
+			if (onFail.action === "retryWithDelay") {
+				await new Promise((r) => setTimeout(r, onFail.delayMs));
 			}
-			await new Promise((resolve) => setTimeout(resolve, onFail.delayMs));
 			const retried = await rerunFn();
 			return gateCheck(
 				retried.output,
@@ -434,7 +352,6 @@ async function gateCheck(
 			return { output: "", results: [...results, gateStepResult] };
 
 		case "warn":
-			// Non-blocking: gate failed but we continue with the output anyway
 			gateStepResult.status = "passed";
 			gateStepResult.error = `⚠️ Warning (gate failed but continued): ${gateResult.reason}`;
 			return { output, results: [...results, gateStepResult] };
@@ -442,8 +359,8 @@ async function gateCheck(
 		case "fallback": {
 			const fallback = await executeStep(
 				{ ...onFail.step, kind: "step" },
-				output, // feed the failed output as input to the fallback
-				output, // original context
+				output,
+				output,
 				ectx,
 			);
 			return {
@@ -470,7 +387,6 @@ async function executeSequential(
 
 	for (const step of seq.steps) {
 		if (ectx.signal?.aborted) break;
-
 		const { output, results } = await executeRunnable(
 			step,
 			currentInput,
@@ -478,28 +394,24 @@ async function executeSequential(
 			ectx,
 		);
 		allResults.push(...results);
-		currentInput = output; // chain output → next step's $INPUT
-
-		// Fail-fast: stop the chain if any step failed (don't feed errors downstream)
+		currentInput = output;
 		const lastResult = results.at(-1);
 		if (lastResult?.status === "failed") break;
 	}
 
-	// Gate check on the sequence's final output (if gate is defined)
 	return gateCheck(
 		currentInput,
 		allResults,
 		seq.gate,
 		seq.onFail,
 		`sequential (${seq.steps.length} steps)`,
-		// rerunFn: re-execute the entire sequence from scratch
 		() => executeSequential(seq, input, original, ectx),
 		ectx,
 		0,
 	);
 }
 
-// ── Pool (same step × N, parallel with worktrees) ─────────────────────────
+// ── Pool ──────────────────────────────────────────────────────────────────
 
 async function executePool(
 	pool: Pool,
@@ -511,11 +423,8 @@ async function executePool(
 	const allResults: StepResult[] = [];
 
 	try {
-		// Launch N copies in parallel
 		const promises = Array.from({ length: pool.count }, async (_, i) => {
 			const label = getLabel(pool.step) || `pool-${i}`;
-
-			// Create worktree for isolation
 			const wt = await createWorktree(
 				ectx.exec,
 				ectx.cwd,
@@ -525,13 +434,10 @@ async function executePool(
 				ectx.signal,
 			);
 			if (wt) worktrees.push({ path: wt.worktreePath, branch: wt.branchName });
-
-			// Execute in worktree cwd if available, else main cwd
 			const branchCtx: ExecutorContext = {
 				...ectx,
 				cwd: wt?.worktreePath ?? ectx.cwd,
 			};
-
 			return executeRunnable(
 				pool.step,
 				`${input}\n[Branch ${i + 1} of ${pool.count}]`,
@@ -540,40 +446,32 @@ async function executePool(
 			);
 		});
 
-		const results = await Promise.allSettled(promises);
+		const settled = await Promise.allSettled(promises);
 		const outputs: string[] = [];
-
-		for (const r of results) {
+		for (const r of settled) {
 			if (r.status === "fulfilled") {
 				outputs.push(r.value.output);
 				allResults.push(...r.value.results);
-			} else {
-				outputs.push(`(error: ${r.reason})`);
-			}
+			} else outputs.push(`(error: ${r.reason})`);
 		}
 
-		// Merge outputs using strategy
 		const merged = await mergeOutputs(pool.merge.strategy, outputs, {
 			model: ectx.model,
 			apiKey: ectx.apiKey,
 			signal: ectx.signal,
 		});
-
-		// Gate check on the merged output (if gate is defined)
 		return gateCheck(
 			merged,
 			allResults,
 			pool.gate,
 			pool.onFail,
 			`pool ×${pool.count}`,
-			// rerunFn: re-launch all N branches + re-merge
 			() => executePool(pool, input, original, ectx),
 			ectx,
 			0,
 		);
 	} finally {
-		// Always clean up worktrees
-		for (const wt of worktrees) {
+		for (const wt of worktrees)
 			await removeWorktree(
 				ectx.exec,
 				ectx.cwd,
@@ -581,11 +479,10 @@ async function executePool(
 				wt.branch,
 				ectx.signal,
 			);
-		}
 	}
 }
 
-// ── Parallel (different steps, concurrent with worktrees) ──────────────────
+// ── Parallel ──────────────────────────────────────────────────────────────
 
 async function executeParallel(
 	par: Parallel,
@@ -599,7 +496,6 @@ async function executeParallel(
 	try {
 		const promises = par.steps.map(async (step, i) => {
 			const label = getLabel(step) || `parallel-${i}`;
-
 			const wt = await createWorktree(
 				ectx.exec,
 				ectx.cwd,
@@ -609,25 +505,20 @@ async function executeParallel(
 				ectx.signal,
 			);
 			if (wt) worktrees.push({ path: wt.worktreePath, branch: wt.branchName });
-
 			const branchCtx: ExecutorContext = {
 				...ectx,
 				cwd: wt?.worktreePath ?? ectx.cwd,
 			};
-
 			return executeRunnable(step, input, original, branchCtx);
 		});
 
-		const results = await Promise.allSettled(promises);
+		const settled = await Promise.allSettled(promises);
 		const outputs: string[] = [];
-
-		for (const r of results) {
+		for (const r of settled) {
 			if (r.status === "fulfilled") {
 				outputs.push(r.value.output);
 				allResults.push(...r.value.results);
-			} else {
-				outputs.push(`(error: ${r.reason})`);
-			}
+			} else outputs.push(`(error: ${r.reason})`);
 		}
 
 		const merged = await mergeOutputs(par.merge.strategy, outputs, {
@@ -635,21 +526,18 @@ async function executeParallel(
 			apiKey: ectx.apiKey,
 			signal: ectx.signal,
 		});
-
-		// Gate check on the merged output (if gate is defined)
 		return gateCheck(
 			merged,
 			allResults,
 			par.gate,
 			par.onFail,
 			`parallel (${par.steps.length} branches)`,
-			// rerunFn: re-run all branches + re-merge
 			() => executeParallel(par, input, original, ectx),
 			ectx,
 			0,
 		);
 	} finally {
-		for (const wt of worktrees) {
+		for (const wt of worktrees)
 			await removeWorktree(
 				ectx.exec,
 				ectx.cwd,
@@ -657,13 +545,11 @@ async function executeParallel(
 				wt.branch,
 				ectx.signal,
 			);
-		}
 	}
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/** Interpolate $INPUT, $ORIGINAL, and ${var} in prompts */
 function interpolatePrompt(
 	template: string,
 	input: string,
@@ -672,43 +558,6 @@ function interpolatePrompt(
 	return template.replace(/\$INPUT/g, input).replace(/\$ORIGINAL/g, original);
 }
 
-/** Resolve the model for an agent, falling back to current model.
- *  Tries the current model's provider first (most likely match),
- *  then common providers as fallback. */
-function resolveModel(
-	agent: Agent | undefined,
-	ectx: ExecutorContext,
-): Model<Api> {
-	if (!agent?.model) return ectx.model;
-
-	// Try current model's provider first, then common ones
-	const currentProvider = ectx.model?.provider;
-	const providers = [
-		currentProvider,
-		"anthropic",
-		"google",
-		"openai",
-		"openrouter",
-		"deepseek",
-	].filter((p): p is string => !!p);
-
-	// Deduplicate while preserving order
-	const seen = new Set<string>();
-	for (const provider of providers) {
-		if (seen.has(provider)) continue;
-		seen.add(provider);
-		try {
-			const found = ectx.modelRegistry.find(provider, agent.model);
-			if (found) return found;
-		} catch {
-			// Provider not available, try next
-		}
-	}
-
-	return ectx.model;
-}
-
-/** Apply transform to step output */
 async function applyTransform(
 	transform: Transform,
 	output: string,
@@ -719,9 +568,7 @@ async function applyTransform(
 			return output;
 
 		case "extract": {
-			// Try to parse JSON and extract a key
 			try {
-				// Find JSON in the output (may be wrapped in markdown code blocks)
 				const jsonMatch = output.match(/```(?:json)?\s*([\s\S]*?)```/) || [
 					null,
 					output,
@@ -729,12 +576,11 @@ async function applyTransform(
 				const parsed = JSON.parse(jsonMatch[1]?.trim());
 				return String(parsed[transform.key] ?? output);
 			} catch {
-				return output; // fallback to full output if JSON parse fails
+				return output;
 			}
 		}
 
 		case "summarize": {
-			// Ask LLM to summarize
 			try {
 				const response = await complete(
 					ectx.model,
@@ -759,7 +605,7 @@ async function applyTransform(
 					.map((c) => c.text)
 					.join("\n");
 			} catch {
-				return output; // fallback on error
+				return output;
 			}
 		}
 
@@ -768,7 +614,6 @@ async function applyTransform(
 	}
 }
 
-/** Handle step failure according to onFail strategy */
 async function handleFailure(
 	step: Step,
 	input: string,
@@ -785,7 +630,8 @@ async function handleFailure(
 	const onFail = step.onFail;
 
 	switch (onFail.action) {
-		case "retry": {
+		case "retry":
+		case "retryWithDelay": {
 			const max = onFail.max ?? 3;
 			if (retryCount >= max) {
 				return {
@@ -794,7 +640,9 @@ async function handleFailure(
 					error: `Gate failed after ${max} retries: ${gateResult.reason}`,
 				};
 			}
-			// Retry the step with feedback about the failure
+			if (onFail.action === "retryWithDelay") {
+				await new Promise((r) => setTimeout(r, onFail.delayMs));
+			}
 			const retryPrompt = `${step.prompt}\n\n[RETRY ${retryCount + 1}/${max}: Previous attempt failed gate: ${gateResult.reason}]\n\nPrevious output:\n${lastOutput.slice(0, 1000)}`;
 			const retryStep: Step = { ...step, prompt: retryPrompt };
 			const { output, results } = await executeStep(
@@ -804,45 +652,7 @@ async function handleFailure(
 				ectx,
 			);
 			const lastResult = results.at(-1);
-			if (lastResult?.status === "passed") {
-				return { status: "passed", output };
-			}
-			// Recursive retry
-			return handleFailure(
-				step,
-				input,
-				original,
-				output,
-				lastResult?.gateResult ?? gateResult,
-				ectx,
-				retryCount + 1,
-			);
-		}
-
-		case "retryWithDelay": {
-			// Retry with a delay between attempts — useful for flaky services or rate limits
-			const max = onFail.max ?? 3;
-			if (retryCount >= max) {
-				return {
-					status: "failed",
-					output: lastOutput,
-					error: `Gate failed after ${max} retries (with ${onFail.delayMs}ms delay): ${gateResult.reason}`,
-				};
-			}
-			// Wait before retrying
-			await new Promise((resolve) => setTimeout(resolve, onFail.delayMs));
-			const retryPrompt = `${step.prompt}\n\n[RETRY ${retryCount + 1}/${max}: Previous attempt failed gate: ${gateResult.reason}]\n\nPrevious output:\n${lastOutput.slice(0, 1000)}`;
-			const retryStep: Step = { ...step, prompt: retryPrompt };
-			const { output, results } = await executeStep(
-				retryStep,
-				input,
-				original,
-				ectx,
-			);
-			const lastResult = results.at(-1);
-			if (lastResult?.status === "passed") {
-				return { status: "passed", output };
-			}
+			if (lastResult?.status === "passed") return { status: "passed", output };
 			return handleFailure(
 				step,
 				input,
@@ -862,7 +672,6 @@ async function handleFailure(
 			};
 
 		case "warn":
-			// Pass through the output despite the gate failure — non-blocking
 			return {
 				status: "passed",
 				output: lastOutput,
@@ -870,7 +679,6 @@ async function handleFailure(
 			};
 
 		case "fallback": {
-			// Execute the fallback step instead
 			const { output } = await executeStep(
 				{ ...onFail.step, kind: "step" },
 				input,
@@ -885,7 +693,6 @@ async function handleFailure(
 	}
 }
 
-/** Get a human-readable label from any Runnable (used for worktree branch naming) */
 function getLabel(r: Runnable): string {
 	switch (r.kind) {
 		case "step":
