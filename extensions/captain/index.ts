@@ -2,7 +2,14 @@
 // Composable, type-safe multi-agent pipelines with sequential, parallel, and
 // pool execution patterns, git worktree isolation, gates, and merge strategies.
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,10 +44,20 @@ export default function (pi: ExtensionAPI) {
 	let runningState: PipelineState | null = null;
 
 	// ── Agent Discovery from .md Files ──────────────────────────────────────
-	// Auto-load agents from ~/.pi/agent/agents/*.md so /captain-agents works
-	// immediately without requiring a pipeline to be loaded first.
+	// Auto-load agents from multiple directories so captain works with any setup:
+	//   1. <extension>/agents/*.md       — bundled with pi-captain repo (lowest precedence)
+	//   2. ~/.pi/agent/agents/*.md       — pi global agents
+	//   3. ~/.claude/agents/*.md         — Claude Code global agents
+	//   4. <project>/agents/*.md         — project-local agents
+	//   5. <project>/.pi/agents/*.md     — project-local pi agents
+	//   6. <project>/.claude/agents/*.md — project-local Claude Code agents
+	// Later directories take precedence (project-local overrides global overrides bundled).
 
-	const AGENTS_DIR = join(homedir(), ".pi", "agent", "agents");
+	const AGENT_DIRS = [
+		join(baseDir, "agents"), // bundled with pi-captain repo
+		join(homedir(), ".pi", "agent", "agents"), // pi global
+		join(homedir(), ".claude", "agents"), // Claude Code global
+	];
 
 	/** Recursively find all .md files in a directory */
 	function findMdFiles(dir: string): string[] {
@@ -58,64 +75,108 @@ export default function (pi: ExtensionAPI) {
 		return files;
 	}
 
-	/** Parse a .md agent file → Agent object (returns null if invalid) */
+	/** Parse a .md agent file → Agent object (returns null if invalid).
+	 *  Supports any provider's agent .md format with YAML frontmatter.
+	 *  Recognized fields: name, description, tools, model, temperature, color, skills. */
 	function parseMdAgent(filePath: string): Agent | null {
 		const content = readFileSync(filePath, "utf-8");
 		const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
 		if (!fmMatch) return null;
 
-		const fm = fmMatch[1];
+		const fm = parseFrontmatter(fmMatch[1]);
 		const body = content.slice(fmMatch[0].length).trim();
 
-		// Extract frontmatter fields
-		const getName = (s: string) =>
-			s
-				.split("\n")
-				.find((l) => l.startsWith("name:"))
-				?.slice(5)
-				.trim();
-		const getDesc = (s: string) =>
-			s
-				.split("\n")
-				.find((l) => l.startsWith("description:"))
-				?.slice(12)
-				.trim();
-		const getTools = (s: string) =>
-			s
-				.split("\n")
-				.find((l) => l.startsWith("tools:"))
-				?.slice(6)
-				.trim();
+		// Name is required — fall back to filename without extension
+		const name =
+			typeof fm.name === "string" ? fm.name : basename(filePath, ".md");
 
-		const name = getName(fm);
-		if (!name) return null;
+		// Tools: accept string[], comma-separated string, or missing
+		let tools: string[] = [];
+		if (Array.isArray(fm.tools)) {
+			tools = fm.tools.map((t) => String(t).trim());
+		} else if (typeof fm.tools === "string") {
+			tools = fm.tools.split(",").map((t) => t.trim());
+		}
+
+		// Model: string identifier (e.g. "sonnet", "flash", "opus", "gpt-4o")
+		const model = typeof fm.model === "string" ? fm.model : undefined;
+
+		// Temperature: number between 0 and 1
+		const temperature =
+			typeof fm.temperature === "number" ? fm.temperature : undefined;
 
 		return {
-			name: name as AgentName, // loaded from agents/*.md
-			description: getDesc(fm) ?? "",
-			tools:
-				getTools(fm)
-					?.split(",")
-					.map((t) => t.trim()) ?? [],
+			name: name as AgentName,
+			description: typeof fm.description === "string" ? fm.description : "",
+			tools,
+			model,
+			temperature,
 			systemPrompt: body || undefined,
 			source: "md",
 		};
 	}
 
-	/** Discover and register all .md agent files (won't overwrite runtime-defined agents) */
-	function loadMdAgents() {
-		for (const filePath of findMdFiles(AGENTS_DIR)) {
-			const agent = parseMdAgent(filePath);
-			if (!agent) continue;
-			// Only register if not already defined at runtime (runtime takes precedence)
-			if (!agents[agent.name] || agents[agent.name].source !== "runtime") {
-				agents[agent.name] = agent;
+	/** Returns true when a newly-discovered agent should overwrite an existing entry.
+	 *  Runtime-defined agents always take precedence over .md file agents. */
+	function shouldRegisterAgent(name: string): boolean {
+		return !agents[name] || agents[name].source !== "runtime";
+	}
+
+	/** Discover and register all .md agent files from all known directories.
+	 *  Load order: global dirs first, then project-local dirs (later overrides earlier).
+	 *  Runtime-defined agents always take precedence. */
+	function loadMdAgents(cwd?: string) {
+		// Build the search path: global dirs + project-local dirs
+		const dirs = [...AGENT_DIRS];
+		if (cwd) {
+			dirs.push(join(cwd, "agents")); // <project>/agents/
+			dirs.push(join(cwd, ".pi", "agents")); // <project>/.pi/agents/
+			dirs.push(join(cwd, ".claude", "agents")); // <project>/.claude/agents/
+		}
+
+		for (const dir of dirs) {
+			for (const filePath of findMdFiles(dir)) {
+				const agent = parseMdAgent(filePath);
+				if (!agent) continue;
+				if (shouldRegisterAgent(agent.name)) agents[agent.name] = agent;
 			}
 		}
 	}
 
-	// Load .md agents immediately on extension init
+	// Load global .md agents immediately on extension init
 	loadMdAgents();
+
+	// ── Auto-Save Pipelines to .pi/pipelines/ ──────────────────────────────
+	// Persists every pipeline as a JSON file so humans can review and reuse them.
+
+	/** Save a pipeline spec (with referenced agents) to .pi/pipelines/<name>.json */
+	function savePipelineToFile(
+		name: string,
+		spec: Runnable,
+		cwd: string,
+	): string {
+		const pipelinesDir = join(cwd, ".pi", "pipelines");
+		mkdirSync(pipelinesDir, { recursive: true });
+
+		// Collect only the agents referenced by this pipeline
+		const refNames = [...new Set(collectAgentRefs(spec))];
+		const referencedAgents: Record<string, Agent> = {};
+		for (const agentName of refNames) {
+			if (agents[agentName]) {
+				referencedAgents[agentName] = agents[agentName];
+			}
+		}
+
+		const payload = {
+			name,
+			agents: referencedAgents,
+			pipeline: spec,
+		};
+
+		const filePath = join(pipelinesDir, `${name}.json`);
+		writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf-8");
+		return filePath;
+	}
 
 	// ── Session Reconstruction ─────────────────────────────────────────────
 	// Rebuild state from tool result details on branch navigation.
@@ -149,7 +210,7 @@ export default function (pi: ExtensionAPI) {
 			if (d) applyCaptainDetails(d);
 		}
 
-		loadMdAgents();
+		loadMdAgents(ctx.cwd);
 	};
 
 	pi.on("session_start", async (_e, ctx) => reconstruct(ctx));
@@ -249,11 +310,13 @@ export default function (pi: ExtensionAPI) {
 	// Project-local presets can still be .json in .pi/pipelines/.
 
 	/** Built-in pipeline registry from pipelines/*.ts modules.
-	 *  Agents are loaded from ~/.pi/agent/agents/*.md — pipelines only export the spec. */
+	 *  All builtins are prefixed with "captain:" to avoid collisions with user pipelines.
+	 *  Agents are bundled in extensions/captain/agents/ — no external dependency needed. */
 	const builtinPresetMap: Record<string, { pipeline: Runnable }> = {};
 	for (const [key, mod] of Object.entries(builtinPipelines)) {
-		// Convert camelCase export name to kebab-case preset name
-		const name = key.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
+		// Convert camelCase export name to kebab-case, then prefix with "captain:"
+		const kebab = key.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
+		const name = `captain:${kebab}`;
 		builtinPresetMap[name] = { pipeline: mod.pipeline };
 	}
 
@@ -281,8 +344,8 @@ export default function (pi: ExtensionAPI) {
 		return presets;
 	}
 
-	/** Load a built-in TS preset by name → register its pipeline.
-	 *  Agents are already loaded from ~/.pi/agent/agents/*.md at init. */
+	/** Load a built-in TS preset by name (e.g. "captain:shredder") → register its pipeline.
+	 *  Agents are bundled in extensions/captain/agents/ and loaded at init. */
 	function loadBuiltinPreset(name: string): {
 		name: string;
 		agentCount: number;
@@ -510,7 +573,7 @@ export default function (pi: ExtensionAPI) {
 			spec: Type.String({ description: "JSON string of the Runnable tree" }),
 		}),
 
-		async execute(_id, params) {
+		async execute(_id, params, _signal, _onUpdate, ctx) {
 			try {
 				const spec = JSON.parse(params.spec) as Runnable;
 
@@ -546,12 +609,15 @@ export default function (pi: ExtensionAPI) {
 
 				pipelines[params.name] = { spec };
 
+				// Auto-save to .pi/pipelines/ for human review and reuse
+				const savedPath = savePipelineToFile(params.name, spec, ctx.cwd);
+
 				const summary = describeRunnable(spec, 0);
 				return {
 					content: [
 						{
 							type: "text",
-							text: `Captain pipeline "${params.name}" defined:\n${summary}`,
+							text: `Captain pipeline "${params.name}" defined:\n${summary}\n\n💾 Saved to ${savedPath}`,
 						},
 					],
 					details: snapshot(),
@@ -660,6 +726,9 @@ export default function (pi: ExtensionAPI) {
 					isError: true,
 				};
 			}
+
+			// Reload agents including project-local dirs before each run
+			loadMdAgents(ctx.cwd);
 
 			// Build executor context
 			const ectx: ExecutorContext = {
@@ -1034,6 +1103,13 @@ export default function (pi: ExtensionAPI) {
 				// Register the pipeline immediately
 				pipelines[generated.name] = { spec: generated.pipeline };
 
+				// Auto-save to .pi/pipelines/ for human review and reuse
+				const savedPath = savePipelineToFile(
+					generated.name,
+					generated.pipeline,
+					ctx.cwd,
+				);
+
 				return {
 					content: [
 						{
@@ -1045,6 +1121,7 @@ export default function (pi: ExtensionAPI) {
 								"── Structure ──",
 								summary,
 								"",
+								`💾 Saved to ${savedPath}`,
 								`Run it with: captain_run({ name: "${generated.name}", input: "<your input>" })`,
 							].join("\n"),
 						},
@@ -1086,33 +1163,61 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("captain", {
 		description:
 			"Show pipeline details (/captain <name>) or list all (/captain)",
-		getArgumentCompletions: (prefix) =>
-			Object.keys(pipelines)
+		getArgumentCompletions: (prefix) => {
+			// Tab-complete from both loaded pipelines and available presets
+			const presets = discoverPresets(process.cwd());
+			const allNames = new Set([
+				...Object.keys(pipelines),
+				...presets.map((p) => p.name),
+			]);
+			return [...allNames]
 				.filter((n) => n.startsWith(prefix))
-				.map((n) => ({ value: n, label: n })),
+				.map((n) => ({
+					value: n,
+					label: pipelines[n]
+						? n
+						: `${n} (${presets.find((p) => p.name === n)?.source ?? "preset"})`,
+				}));
+		},
 		handler: async (args, ctx) => {
 			const name = args?.trim();
 			if (!name) {
-				const names = Object.keys(pipelines);
+				// Show loaded pipelines + all available (unloaded) presets
+				const lines = buildPipelineListLines(ctx.cwd);
 				ctx.ui.notify(
-					names.length > 0
-						? `Pipelines: ${names.join(", ")}`
-						: "No pipelines defined.",
+					lines.length > 0
+						? lines.join("\n")
+						: "No pipelines defined or available.",
 					"info",
 				);
 				return;
 			}
 
+			// Show detail for a specific pipeline — load preset on-the-fly if needed
 			const p = pipelines[name];
-			if (!p) {
-				ctx.ui.notify(`Pipeline "${name}" not found.`, "error");
+			if (p) {
+				ctx.ui.notify(
+					`Pipeline "${name}":\n${describeRunnable(p.spec, 0)}`,
+					"info",
+				);
 				return;
 			}
 
-			ctx.ui.notify(
-				`Pipeline "${name}":\n${describeRunnable(p.spec, 0)}`,
-				"info",
-			);
+			// Try resolving as a preset so we can show its structure without running it
+			try {
+				const resolved = resolvePreset(name, ctx.cwd);
+				if (resolved) {
+					ctx.ui.notify(
+						`Pipeline "${name}" (${resolved.source ?? "preset"} — not yet loaded):\n${describeRunnable(resolved.spec, 0)}`,
+						"info",
+					);
+					return;
+				}
+			} catch {
+				/* fall through to not-found message */
+			}
+
+			ctx.ui.notify(`Pipeline "${name}" not found.`, "error");
 		},
 	});
 
@@ -1163,9 +1268,9 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("captain-load", {
 		description:
 			"Load a pipeline preset (/captain-load <name>). No args to list available presets.",
-		getArgumentCompletions: (prefix, ctx) => {
+		getArgumentCompletions: (prefix) => {
 			// Tab-complete from discovered presets
-			const presets = discoverPresets(ctx.cwd);
+			const presets = discoverPresets(process.cwd());
 			return presets
 				.filter((p) => p.name.startsWith(prefix))
 				.map((p) => ({ value: p.name, label: `${p.name} (${p.source})` }));
@@ -1292,6 +1397,97 @@ export default function (pi: ExtensionAPI) {
 }
 
 // ── Utility Functions ──────────────────────────────────────────────────────
+
+// ── YAML Frontmatter Helpers ──────────────────────────────────────────────
+
+/** Try to match a YAML list item line; returns the trimmed value or null. */
+function parseListItem(line: string): string | null {
+	const m = line.match(/^\s+-\s+(.+)/);
+	return m ? m[1].trim() : null;
+}
+
+/**
+ * Coerce a raw (already-unquoted) YAML scalar string to the right JS type.
+ * Returns a boolean, number, string[], or string.
+ */
+function parseScalarValue(
+	unquoted: string,
+): string | string[] | number | boolean {
+	if (unquoted === "true") return true;
+	if (unquoted === "false") return false;
+	if (/^-?\d+(\.\d+)?$/.test(unquoted)) return Number(unquoted);
+	if (unquoted.includes(",")) return unquoted.split(",").map((s) => s.trim());
+	return unquoted;
+}
+
+/** Flush a pending list accumulator into result. */
+function flushPendingList(
+	result: Record<string, string | string[] | number | boolean>,
+	key: string,
+	listItems: string[] | null,
+): void {
+	if (listItems && key) result[key] = listItems;
+}
+
+/**
+ * Process a key-value line; updates result and returns the new currentKey.
+ * Returns null if the line is not a key-value pair.
+ */
+function parseKeyValue(
+	line: string,
+	result: Record<string, string | string[] | number | boolean>,
+): string | null {
+	const kvMatch = line.match(/^([a-zA-Z_][a-zA-Z0-9_-]*)\s*:\s*(.*)/);
+	if (!kvMatch) return null;
+	const key = kvMatch[1];
+	const rawValue = kvMatch[2].trim();
+	// Empty value — could be followed by YAML list items
+	if (rawValue) {
+		const unquoted = rawValue.replace(/^["']|["']$/g, "");
+		result[key] = parseScalarValue(unquoted);
+	}
+	return key;
+}
+
+/**
+ * Parse YAML-style frontmatter into a key-value map.
+ * Handles: scalar values, comma-separated lists, YAML list syntax (  - item),
+ * quoted strings, numeric values, and multi-line descriptions.
+ * No external YAML dependency — works with any provider's .md agent format.
+ */
+function parseFrontmatter(
+	raw: string,
+): Record<string, string | string[] | number | boolean> {
+	const result: Record<string, string | string[] | number | boolean> = {};
+	const lines = raw.split("\n");
+	let currentKey = "";
+	let listItems: string[] | null = null;
+
+	for (const line of lines) {
+		// YAML list item (  - value) — belongs to the current key
+		const item = parseListItem(line);
+		if (item !== null && currentKey) {
+			if (!listItems) listItems = [];
+			listItems.push(item);
+			continue;
+		}
+
+		// Flush any pending list before processing the next key
+		if (listItems && currentKey) {
+			flushPendingList(result, currentKey, listItems);
+			listItems = null;
+		}
+
+		// Key: value pair (top-level, no leading whitespace)
+		const newKey = parseKeyValue(line, result);
+		if (newKey !== null) currentKey = newKey;
+	}
+
+	// Flush final pending list
+	flushPendingList(result, currentKey, listItems);
+
+	return result;
+}
 
 /** Status icon for step results */
 function statusIcon(status: string): string {

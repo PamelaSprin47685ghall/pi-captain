@@ -6,10 +6,10 @@ Multi-agent pipeline orchestrator for [pi](https://github.com/badlogic/pi-mono).
 
 ```bash
 # Project-local (recommended — auto-installs for teammates)
-pi install -l git:github.com/YOUR-ORG/pi-captain
+pi install -l git:github.com/Pierre-Mike/pi-captain
 
 # Global
-pi install git:github.com/YOUR-ORG/pi-captain
+pi install git:github.com/Pierre-Mike/pi-captain
 ```
 
 ## What You Get
@@ -28,20 +28,15 @@ pi install git:github.com/YOUR-ORG/pi-captain
 
 ### Builtin Pipeline Presets
 
+All builtin presets are prefixed with `captain:` to avoid naming collisions with your own pipelines.
+
 | Preset | Description |
 |--------|-------------|
-| `pr-review` | Parallel security + performance + quality review |
-| `full-feature-build` | Architecture → parallel frontend/backend/tests → review |
-| `bug-hunt` | Reproduce → diagnose → fix → verify |
-| `refactor-and-verify` | Iterative simplification with test gates |
-| `research-and-summarize` | Multi-angle research + synthesis |
-| `security-audit` | OWASP, secrets, dependencies, red-team assessment |
-| `test-coverage-boost` | Find gaps, generate unit + edge-case tests |
-| `documentation-gen` | Auto-generate architecture, API, and usage docs |
-| `api-design` | Design + implement APIs |
-| `migration-planner` | Plan complex migrations with risk assessment |
-| `shrinker` | Reduce code size iteratively |
-| `gated-feature-build` | Feature build with quality gates |
+| `captain:shredder` | Clarify → decompose → shred to atomic units → validate → resolve deps → generate pipeline spec → Obsidian canvas |
+| `captain:spec-tdd` | Spec → TDD red → TDD green + docs (parallel) → review → PR |
+| `captain:requirements-gathering` | Explore → deep-dive → challenge → synthesize REQUIREMENTS.md |
+
+All 23 agents used by these pipelines are **bundled in the repo** under `extensions/captain/agents/` — no external setup needed. Your own agents (in `~/.pi/agent/agents/` or `.claude/agents/`) take precedence and can override bundled ones.
 
 ### Pipeline Composition
 
@@ -74,7 +69,7 @@ pool        — Run same step N times, pick best
 
 ```bash
 # Clone and develop locally
-git clone git:github.com/YOUR-ORG/pi-captain
+git clone https://github.com/Pierre-Mike/pi-captain.git
 cd pi-captain
 npm install          # installs deps + sets up Husky git hooks via `prepare`
 

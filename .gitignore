@@ -4,3 +4,7 @@ node_modules/
 *.map
 .DS_Store
 .worktrees/
+
+# Personal pipeline JSON files (moved to ~/.pi/pipelines/)
+.pi/
+.vscode/

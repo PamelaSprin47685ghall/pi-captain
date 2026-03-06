@@ -1,7 +1,16 @@
 // ── Captain: Pipeline Orchestration Types ──────────────────────────────────
 
-/** Known agent names from ~/.pi/agent/agents/*.md */
-export type KnownAgent =
+/**
+ * Agent name — any string that matches an agent defined in:
+ *   - ~/.pi/agent/agents/*.md   (pi agent files)
+ *   - .claude/agents/*.md       (Claude Code agent files)
+ *   - Runtime definitions        (captain_agent tool)
+ *   - JSON pipeline files        (.pi/pipelines/*.json)
+ *
+ * The `& {}` intersection preserves autocomplete for known built-in names
+ * while accepting any string at the type level (open union pattern).
+ */
+export type AgentName =
 	| "architect"
 	| "backend-dev"
 	| "bowser"
@@ -20,15 +29,25 @@ export type KnownAgent =
 	| "reviewer"
 	| "scout"
 	| "security-reviewer"
-	| "shredder"
+	| "shrinker"
 	| "summarizer"
 	| "synthesizer"
 	| "tester"
 	| "typescript-expert"
-	| "validator";
-
-/** Agent name — must match an agent defined in ~/.pi/agent/agents/*.md */
-export type AgentName = KnownAgent;
+	| "validator"
+	// ── Spec-TDD pipeline agents ─────────────────────────────────────────
+	| "spec-writer"
+	| "tdd-red"
+	| "tdd-green"
+	| "code-reviewer"
+	| "review-fixer"
+	| "pr-preparer"
+	// ── Requirements Gathering pipeline agents ───────────────────────────
+	| "explorer"
+	| "deep-diver"
+	| "challenger"
+	| "req-synthesizer"
+	| (string & {}); // ← open union: accepts ANY string, autocomplete still works for known names
 
 /** Agent config — defines an LLM persona with tool access */
 export interface Agent {
