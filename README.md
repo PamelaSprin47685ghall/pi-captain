@@ -18,8 +18,8 @@ pi install git:github.com/Pierre-Mike/pi-captain
 
 | Tool | Description |
 |------|-------------|
-| `captain_agent` | Define a reusable agent with name, description, tools, model, and temperature |
-| `captain_define` | Wire agents into a pipeline (sequential / parallel / pool) |
+| `captain_agent` | Define a reusable named agent (model, tools, systemPrompt) |
+| `captain_define` | Wire steps into a pipeline (sequential / parallel / pool) |
 | `captain_run` | Execute a pipeline with input, gates enforce quality |
 | `captain_status` | Check pipeline progress and results |
 | `captain_list` | List all defined pipelines |
@@ -38,11 +38,42 @@ All builtin presets are prefixed with `captain:` to avoid naming collisions with
 
 All 23 agents used by these pipelines are **bundled in the repo** under `extensions/captain/agents/` — no external setup needed. Your own agents (in `~/.pi/agent/agents/` or `.claude/agents/`) take precedence and can override bundled ones.
 
+### How Steps Work
+
+Each step runs `pi --print` as a subprocess — captain is pure orchestration, pi does the work.
+
+```
+pi --print --no-session --model sonnet --tools read,bash,edit --system-prompt "..." [--mode json] <prompt>
+```
+
+You can configure a step **inline** (no agent file needed), **by name** (reusable agent), or **both** (inline overrides named defaults):
+
+```json
+{ "kind": "step", "label": "Analyze", "model": "flash", "tools": ["read","bash"],
+  "jsonOutput": true, "prompt": "Analyze $INPUT and return JSON {score, issues[]}", ... }
+
+{ "kind": "step", "label": "Implement", "agent": "coder",
+  "prompt": "Implement: $ORIGINAL\n\nContext: $INPUT", ... }
+
+{ "kind": "step", "label": "Fast review", "agent": "reviewer", "model": "flash",
+  "prompt": "Quick review of $INPUT", ... }
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `agent` | — | Named agent (optional) |
+| `model` | `"sonnet"` | `--model` flag |
+| `tools` | `["read","bash","edit","write"]` | `--tools` flag |
+| `systemPrompt` | — | `--system-prompt` flag |
+| `skills` | — | Each path passed as `--skill` |
+| `extensions` | — | Each path passed as `--extension` |
+| `jsonOutput` | `false` | `--mode json` for structured output |
+
 ### Pipeline Composition
 
 ```
-sequential  — A then B then C
-parallel    — A + B + C simultaneously, merge results
+sequential  — A then B then C  ($INPUT chains between steps)
+parallel    — A + B + C simultaneously, each in its own git worktree, merge results
 pool        — Run same step N times, pick best
 ```
 
@@ -61,8 +92,8 @@ pool        — Run same step N times, pick best
 # Generate a custom pipeline on the fly
 > Use captain to refactor the auth module and ensure all tests pass
 
-# Define a custom pipeline step by step
-> Define a captain pipeline that lints, tests, and deploys
+# Define a custom inline pipeline (no agent setup needed)
+> Define a captain pipeline: first analyze the codebase with flash+read, then implement with sonnet+all tools, then run bun test as a gate
 ```
 
 ## Development

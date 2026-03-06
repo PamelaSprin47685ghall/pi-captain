@@ -554,8 +554,12 @@ export default function (pi: ExtensionAPI) {
 			"Define a pipeline from a JSON spec (the Runnable tree).",
 			"Runnable types: step, sequential, pool, parallel — infinitely nestable.",
 			"",
-			"Step shape: { kind: 'step', label, agent, description, prompt, gate, onFail, transform }",
+			"Step shape: { kind: 'step', label, prompt, gate, onFail, transform, ...config }",
 			"  - prompt supports $INPUT (previous output) and $ORIGINAL (user request)",
+			"  - agent?: named agent (optional — inline fields below override agent defaults)",
+			"  - model?: 'sonnet'|'flash'|...  tools?: ['read','bash',...]  systemPrompt?: '...'",
+			"  - skills?: ['path/to/skill.md']  extensions?: ['path/to/ext.ts']",
+			"  - jsonOutput?: true  → passes --mode json to pi (step output is structured JSON)",
 			"  - gate: { type: 'command'|'user'|'file'|'assert'|'llm'|'none', value }",
 			"  - llm gate: { type: 'llm', prompt: 'evaluation criteria', model?: 'flash', threshold?: 0.7 }",
 			"  - onFail: { action: 'retry'|'skip'|'fallback', max?, step? }",
@@ -590,22 +594,14 @@ export default function (pi: ExtensionAPI) {
 					};
 				}
 
-				// Validate all agent references in the spec exist
+				// Warn (but don't block) if any named agents are unknown
 				const unknownAgents = collectAgentRefs(spec).filter(
 					(name) => !agents[name],
 				);
-				if (unknownAgents.length > 0) {
-					const available = Object.keys(agents).join(", ");
-					return {
-						content: [
-							{
-								type: "text",
-								text: `Error: unknown agent(s): ${unknownAgents.join(", ")}.\nAvailable agents: ${available}`,
-							},
-						],
-						isError: true,
-					};
-				}
+				const warning =
+					unknownAgents.length > 0
+						? `\n⚠️  Unknown agent(s): ${unknownAgents.join(", ")} — make sure they are defined before running.`
+						: "";
 
 				pipelines[params.name] = { spec };
 
@@ -617,7 +613,7 @@ export default function (pi: ExtensionAPI) {
 					content: [
 						{
 							type: "text",
-							text: `Captain pipeline "${params.name}" defined:\n${summary}\n\n💾 Saved to ${savedPath}`,
+							text: `Captain pipeline "${params.name}" defined:${warning}\n${summary}\n\n💾 Saved to ${savedPath}`,
 						},
 					],
 					details: snapshot(),
@@ -683,23 +679,6 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			// Pre-flight: validate all agent references before running
-			const unknownAgents = collectAgentRefs(pipeline.spec).filter(
-				(name) => !agents[name],
-			);
-			if (unknownAgents.length > 0) {
-				const available = Object.keys(agents).join(", ");
-				return {
-					content: [
-						{
-							type: "text",
-							text: `Error: pipeline references unknown agent(s): ${unknownAgents.join(", ")}.\nAvailable agents: ${available}`,
-						},
-					],
-					isError: true,
-				};
-			}
-
 			// Initialize running state
 			const state: PipelineState = {
 				name: params.name,
@@ -742,7 +721,6 @@ export default function (pi: ExtensionAPI) {
 				confirm: ctx.hasUI ? (t, b) => ctx.ui.confirm(t, b) : undefined,
 				signal: signal ?? undefined,
 				pipelineName: params.name,
-				extensionTools: undefined, // Phase 1: built-in tools only; Phase 2: wrap extension tools
 				onStepStart: (label) => {
 					// Stream progress update
 					onUpdate?.({
@@ -1505,11 +1483,11 @@ function statusIcon(status: string): string {
 	}
 }
 
-/** Recursively collect all agent name references from a Runnable tree */
+/** Recursively collect all named agent references from a Runnable tree */
 function collectAgentRefs(r: Runnable): string[] {
 	switch (r.kind) {
 		case "step":
-			return [r.agent];
+			return r.agent ? [r.agent] : [];
 		case "sequential":
 			return r.steps.flatMap(collectAgentRefs);
 		case "pool":
@@ -1521,43 +1499,46 @@ function collectAgentRefs(r: Runnable): string[] {
 	}
 }
 
+/** Format the gate/onFail suffix for container runnables (sequential, pool, parallel) */
+function containerGateInfo(
+	gate: Gate | undefined,
+	onFail: OnFail | undefined,
+): string {
+	return gate
+		? ` (gate: ${gate.type}, onFail: ${onFail?.action ?? "none"})`
+		: "";
+}
+
 /** Human-readable description of a Runnable tree */
 function describeRunnable(r: Runnable, indent: number): string {
 	const pad = " ".repeat(indent);
 
 	switch (r.kind) {
-		case "step":
-			return `${pad}→ [step] "${r.label}" (agent: ${r.agent}, gate: ${r.gate.type}, onFail: ${r.onFail.action})`;
-
-		case "sequential": {
-			const gateInfo = r.gate
-				? ` (gate: ${r.gate.type}, onFail: ${r.onFail?.action ?? "none"})`
-				: "";
-			return [
-				`${pad}⟶ [sequential] (${r.steps.length} steps)${gateInfo}`,
-				...r.steps.map((s) => describeRunnable(s, indent + 2)),
-			].join("\n");
+		case "step": {
+			const who = r.agent
+				? `agent: ${r.agent}`
+				: `model: ${r.model ?? "sonnet"}, tools: ${(r.tools ?? ["read", "bash", "edit", "write"]).join(",")}`;
+			const json = r.jsonOutput ? ", json" : "";
+			return `${pad}→ [step] "${r.label}" (${who}${json}, gate: ${r.gate.type}, onFail: ${r.onFail.action})`;
 		}
 
-		case "pool": {
-			const gateInfo = r.gate
-				? ` (gate: ${r.gate.type}, onFail: ${r.onFail?.action ?? "none"})`
-				: "";
+		case "sequential":
 			return [
-				`${pad}⟳ [pool] ×${r.count} (merge: ${r.merge.strategy})${gateInfo}`,
+				`${pad}⟶ [sequential] (${r.steps.length} steps)${containerGateInfo(r.gate, r.onFail)}`,
+				...r.steps.map((s) => describeRunnable(s, indent + 2)),
+			].join("\n");
+
+		case "pool":
+			return [
+				`${pad}⟳ [pool] ×${r.count} (merge: ${r.merge.strategy})${containerGateInfo(r.gate, r.onFail)}`,
 				describeRunnable(r.step, indent + 2),
 			].join("\n");
-		}
 
-		case "parallel": {
-			const gateInfo = r.gate
-				? ` (gate: ${r.gate.type}, onFail: ${r.onFail?.action ?? "none"})`
-				: "";
+		case "parallel":
 			return [
-				`${pad}⫸ [parallel] (${r.steps.length} branches, merge: ${r.merge.strategy})${gateInfo}`,
+				`${pad}⫸ [parallel] (${r.steps.length} branches, merge: ${r.merge.strategy})${containerGateInfo(r.gate, r.onFail)}`,
 				...r.steps.map((s) => describeRunnable(s, indent + 2)),
 			].join("\n");
-		}
 
 		default:
 			return `${pad}? unknown`;
