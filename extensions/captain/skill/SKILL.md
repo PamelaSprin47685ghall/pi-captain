@@ -25,26 +25,26 @@ Captain turns pi into a multi-agent orchestration platform. Define typed pipelin
 
 ## Step Fields
 
-Each step runs `pi --print` as a subprocess. All config fields are optional — defaults are sensible.
+Each step runs as an in-process pi SDK session (`createAgentSession`). All config fields are optional — defaults are sensible.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `label` | string | required | Display name for the step |
-| `prompt` | string | required | Prompt sent to pi. Supports `$INPUT`, `$ORIGINAL` |
+| `prompt` | string | required | Prompt sent to the agent. Supports `$INPUT`, `$ORIGINAL` |
 | `agent` | string | — | Named agent (model/tools/systemPrompt from its definition) |
-| `model` | string | `"sonnet"` | Model to use (`--model`). Overrides agent default |
-| `tools` | string[] | `["read","bash","edit","write"]` | Tools to enable (`--tools`). Overrides agent default |
-| `systemPrompt` | string | — | System prompt text (`--system-prompt`). Overrides agent default |
-| `skills` | string[] | — | Skill file paths, each passed as `--skill` |
-| `extensions` | string[] | — | Extension file paths, each passed as `--extension` |
-| `jsonOutput` | boolean | `false` | Pass `--mode json` — step output is structured JSON |
+| `model` | string | `"sonnet"` | Model identifier (pattern-matched, e.g. `"flash"`, `"claude-opus-4-5"`). Overrides agent default |
+| `tools` | string[] | `["read","bash","edit","write"]` | Tool names to enable. Overrides agent default |
+| `systemPrompt` | string | — | System prompt override. Overrides agent default |
+| `skills` | string[] | — | Additional skill file paths to inject into the session |
+| `extensions` | string[] | — | Additional extension file paths to load into the session |
+| `jsonOutput` | boolean | `false` | Ask the agent to produce structured JSON output |
 | `gate` | Gate | required | Validation after the step runs |
 | `onFail` | OnFail | required | What to do when the gate fails |
 | `transform` | Transform | required | How to pass output to the next step |
 
 ## Quick Start
 
-Each step runs `pi --print` under the hood. You can configure the step inline or reference a named agent — or both (inline fields override agent defaults).
+You can configure a step inline or reference a named agent — or both (inline fields override agent defaults).
 
 ### Option A — Inline steps (no agent setup needed)
 

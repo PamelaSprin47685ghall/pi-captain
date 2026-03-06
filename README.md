@@ -40,11 +40,7 @@ All 23 agents used by these pipelines are **bundled in the repo** under `extensi
 
 ### How Steps Work
 
-Each step runs `pi --print` as a subprocess — captain is pure orchestration, pi does the work.
-
-```
-pi --print --no-session --model sonnet --tools read,bash,edit --system-prompt "..." [--mode json] <prompt>
-```
+Each step runs as an in-process pi SDK session (`createAgentSession`) — no subprocess overhead, direct access to the agent lifecycle.
 
 You can configure a step **inline** (no agent file needed), **by name** (reusable agent), or **both** (inline overrides named defaults):
 
@@ -62,12 +58,12 @@ You can configure a step **inline** (no agent file needed), **by name** (reusabl
 | Field | Default | Description |
 |-------|---------|-------------|
 | `agent` | — | Named agent (optional) |
-| `model` | `"sonnet"` | `--model` flag |
-| `tools` | `["read","bash","edit","write"]` | `--tools` flag |
-| `systemPrompt` | — | `--system-prompt` flag |
-| `skills` | — | Each path passed as `--skill` |
-| `extensions` | — | Each path passed as `--extension` |
-| `jsonOutput` | `false` | `--mode json` for structured output |
+| `model` | `"sonnet"` | Model identifier (resolved via pattern matching, e.g. `"flash"`, `"claude-opus-4-5"`) |
+| `tools` | `["read","bash","edit","write"]` | Tool names to enable (`"read"`, `"bash"`, `"edit"`, `"write"`, `"grep"`, `"find"`, `"ls"`) |
+| `systemPrompt` | — | System prompt override for this step |
+| `skills` | — | Additional skill file paths to inject |
+| `extensions` | — | Additional extension file paths to load |
+| `jsonOutput` | `false` | Ask the agent to produce structured JSON output |
 
 ### Pipeline Composition
 
