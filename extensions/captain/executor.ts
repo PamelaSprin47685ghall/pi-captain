@@ -1,8 +1,23 @@
 // ── Recursive Pipeline Execution Engine ────────────────────────────────────
-// Each Step runs `pi --print` as a subprocess — captain is pure orchestration.
+// Each Step runs via the pi SDK (createAgentSession) — no subprocess needed.
 
 import type { Api, Model } from "@mariozechner/pi-ai";
 import { complete } from "@mariozechner/pi-ai";
+import {
+	createAgentSession,
+	createBashTool,
+	createEditTool,
+	createFindTool,
+	createGrepTool,
+	createLsTool,
+	createReadTool,
+	createWriteTool,
+	DefaultResourceLoader,
+	getAgentDir,
+	SessionManager,
+	SettingsManager,
+	type Tool,
+} from "@mariozechner/pi-coding-agent";
 import { evaluateGate, type GateResult } from "./gates.js";
 import { mergeOutputs } from "./merge.js";
 import type {
@@ -21,6 +36,7 @@ import { createWorktree, removeWorktree } from "./worktree.js";
 
 /** Model registry interface — for LLM gates and merge strategies */
 export interface ModelRegistryLike {
+	getAll(): Model<Api>[];
 	find(provider: string, modelId: string): Model<Api> | undefined;
 	getApiKey(model: Model<Api>): Promise<string | undefined>;
 }
@@ -74,37 +90,51 @@ export async function executeRunnable(
 
 // ── Step Execution ─────────────────────────────────────────────────────────
 
-/** Build the argv for `pi --print` from a Step and its resolved agent config */
-function buildPiArgs(
-	step: Step,
-	agent: Agent | undefined,
-	prompt: string,
-): string[] {
-	const model = step.model ?? agent?.model ?? "sonnet";
-	const tools = step.tools ?? agent?.tools ?? ["read", "bash", "edit", "write"];
-	const systemPrompt = step.systemPrompt ?? agent?.systemPrompt;
-
-	const args: string[] = [
-		"--print",
-		"--no-session",
-		"--model",
-		model,
-		"--tools",
-		tools.join(","),
-	];
-	if (systemPrompt) args.push("--system-prompt", systemPrompt);
-	if (step.jsonOutput) args.push("--mode", "json");
-	// TODO: wire up once pi --print supports these flags
-	// Tracking: https://github.com/badlogic/pi-mono/issues/1898
-	// if (step.maxTurns)  args.push("--max-turns",  String(step.maxTurns));
-	// if (step.maxTokens) args.push("--max-tokens", String(step.maxTokens));
-	for (const s of step.skills ?? []) args.push("--skill", s);
-	for (const e of step.extensions ?? []) args.push("--extension", e);
-	args.push(prompt);
-	return args;
+/** Map tool name strings (e.g. "read", "bash") to SDK Tool instances for a given cwd. */
+function resolveTools(names: string[], cwd: string): Tool[] {
+	return names.flatMap((name) => {
+		switch (name) {
+			case "read":
+				return [createReadTool(cwd)];
+			case "bash":
+				return [createBashTool(cwd)];
+			case "edit":
+				return [createEditTool(cwd)];
+			case "write":
+				return [createWriteTool(cwd)];
+			case "grep":
+				return [createGrepTool(cwd)];
+			case "find":
+				return [createFindTool(cwd)];
+			case "ls":
+				return [createLsTool(cwd)];
+			default:
+				return [];
+		}
+	});
 }
 
-/** Resolve agent, run pi --print, evaluate gate, apply transform. Returns output + status. */
+/** Resolve a model identifier string (e.g. "sonnet") to a Model object via the registry. */
+function resolveModel(
+	pattern: string,
+	registry: ModelRegistryLike,
+	fallback: Model<Api>,
+): Model<Api> {
+	const all = registry.getAll();
+	const lower = pattern.toLowerCase();
+	// Exact id match first, then partial match on id/name
+	return (
+		all.find((m) => m.id.toLowerCase() === lower) ??
+		all.find(
+			(m) =>
+				m.id.toLowerCase().includes(lower) ||
+				(m as { name?: string }).name?.toLowerCase().includes(lower),
+		) ??
+		fallback
+	);
+}
+
+/** Resolve agent, create an SDK session, run the prompt, evaluate gate, apply transform. */
 async function runStepCore(
 	step: Step,
 	input: string,
@@ -125,9 +155,68 @@ async function runStepCore(
 	}
 
 	const prompt = interpolatePrompt(step.prompt, input, original);
-	const args = buildPiArgs(step, agent, prompt);
-	const { stdout } = await ectx.exec("pi", args, { signal: ectx.signal });
-	const output = stdout.trim();
+
+	// ── Resolve model ────────────────────────────────────────────────────
+	const modelStr = step.model ?? agent?.model ?? "sonnet";
+	const model = resolveModel(modelStr, ectx.modelRegistry, ectx.model);
+
+	// ── Resolve tools ────────────────────────────────────────────────────
+	const toolNames = step.tools ??
+		agent?.tools ?? ["read", "bash", "edit", "write"];
+	const tools = resolveTools(toolNames, ectx.cwd);
+
+	// ── Build resource loader (skills, extensions, system prompt) ────────
+	const systemPrompt = step.systemPrompt ?? agent?.systemPrompt;
+
+	const loader = new DefaultResourceLoader({
+		cwd: ectx.cwd,
+		agentDir: getAgentDir(),
+		...(systemPrompt && { systemPrompt }),
+		...(step.extensions?.length > 0 && {
+			additionalExtensionPaths: step.extensions,
+		}),
+		...(step.skills?.length > 0 && {
+			additionalSkillPaths: step.skills,
+		}),
+	});
+	await loader.reload();
+
+	// ── Create in-process session ─────────────────────────────────────────
+	const { session } = await createAgentSession({
+		cwd: ectx.cwd,
+		model,
+		tools,
+		resourceLoader: loader,
+		sessionManager: SessionManager.inMemory(),
+		settingsManager: SettingsManager.inMemory({
+			compaction: { enabled: false },
+		}),
+	});
+
+	// Wire abort signal → session.abort()
+	const onAbort = () => session.abort();
+	ectx.signal?.addEventListener("abort", onAbort);
+
+	// Collect text output from streaming events
+	let output = "";
+	const unsub = session.subscribe((event) => {
+		if (
+			event.type === "message_update" &&
+			event.assistantMessageEvent.type === "text_delta"
+		) {
+			output += event.assistantMessageEvent.delta;
+		}
+	});
+
+	try {
+		await session.prompt(prompt);
+	} finally {
+		unsub();
+		ectx.signal?.removeEventListener("abort", onAbort);
+		session.dispose();
+	}
+
+	output = output.trim();
 
 	const gateResult = await evaluateGate(step.gate, output, {
 		exec: ectx.exec,
