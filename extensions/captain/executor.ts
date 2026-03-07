@@ -114,7 +114,10 @@ function resolveTools(names: string[], cwd: string): Tool[] {
 	});
 }
 
-/** Resolve a model identifier string (e.g. "sonnet") to a Model object via the registry. */
+/** Resolve a model identifier string (e.g. "sonnet") to a Model object via the registry.
+ * Prefers models from the same provider as the fallback (current session model) to avoid
+ * accidentally resolving to Amazon Bedrock or other providers when multiple providers
+ * have models with the same ID. */
 function resolveModel(
 	pattern: string,
 	registry: ModelRegistryLike,
@@ -122,16 +125,27 @@ function resolveModel(
 ): Model<Api> {
 	const all = registry.getAll();
 	const lower = pattern.toLowerCase();
-	// Exact id match first, then partial match on id/name
-	return (
-		all.find((m) => m.id.toLowerCase() === lower) ??
-		all.find(
-			(m) =>
-				m.id.toLowerCase().includes(lower) ||
-				(m as { name?: string }).name?.toLowerCase().includes(lower),
-		) ??
-		fallback
+	const sameProvider = (m: Model<Api>) => m.provider === fallback.provider;
+
+	// 1. Exact id match within same provider
+	const exactSameProvider = all.find(
+		(m) => m.id.toLowerCase() === lower && sameProvider(m),
 	);
+	if (exactSameProvider) return exactSameProvider;
+
+	// 2. Partial match within same provider (name or id)
+	const partialSameProvider = all.find(
+		(m) =>
+			sameProvider(m) &&
+			(m.id.toLowerCase().includes(lower) ||
+				(m as { name?: string }).name?.toLowerCase().includes(lower)),
+	);
+	if (partialSameProvider) return partialSameProvider;
+
+	// 3. No match in current provider — fall back to session model to avoid
+	//    accidentally resolving to a different provider (e.g. Amazon Bedrock)
+	//    that the user may not have credentials for.
+	return fallback;
 }
 
 /** Resolve agent, create an SDK session, run the prompt, evaluate gate, apply transform. */
@@ -157,8 +171,12 @@ async function runStepCore(
 	const prompt = interpolatePrompt(step.prompt, input, original);
 
 	// ── Resolve model ────────────────────────────────────────────────────
-	const modelStr = step.model ?? agent?.model ?? "sonnet";
-	const model = resolveModel(modelStr, ectx.modelRegistry, ectx.model);
+	// Default to the current session model (ectx.model) when no model is specified,
+	// rather than a hardcoded alias like "sonnet" that could resolve to the wrong provider.
+	const modelStr = step.model ?? agent?.model;
+	const model = modelStr
+		? resolveModel(modelStr, ectx.modelRegistry, ectx.model)
+		: ectx.model;
 
 	// ── Resolve tools ────────────────────────────────────────────────────
 	const toolNames = step.tools ??
