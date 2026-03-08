@@ -62,6 +62,8 @@ export interface ExecutorContext {
 	/** Called with the accumulated text output as each delta arrives */
 	onStepStream?: (text: string) => void;
 	pipelineName: string;
+	/** Group label for steps running inside a parallel/pool — set by the executor */
+	stepGroup?: string;
 }
 
 /** Execute any Runnable recursively, returning output text */
@@ -301,6 +303,7 @@ async function executeStep(
 	}
 
 	result.elapsed = Date.now() - start;
+	if (ectx.stepGroup) result.group = ectx.stepGroup;
 	ectx.onStepEnd?.(result);
 	return { output: result.output, results: [result] };
 }
@@ -447,6 +450,7 @@ async function executePool(
 	const allResults: StepResult[] = [];
 
 	try {
+		const poolGroup = `pool ×${pool.count}: ${getLabel(pool.step) || "step"}`;
 		const promises = Array.from({ length: pool.count }, async (_, i) => {
 			const label = getLabel(pool.step) || `pool-${i}`;
 			const wt = await createWorktree(
@@ -461,6 +465,7 @@ async function executePool(
 			const branchCtx: ExecutorContext = {
 				...ectx,
 				cwd: wt?.worktreePath ?? ectx.cwd,
+				stepGroup: poolGroup,
 			};
 			return executeRunnable(
 				pool.step,
@@ -518,6 +523,7 @@ async function executeParallel(
 	const allResults: StepResult[] = [];
 
 	try {
+		const parGroup = `parallel ×${par.steps.length}`;
 		const promises = par.steps.map(async (step, i) => {
 			const label = getLabel(step) || `parallel-${i}`;
 			const wt = await createWorktree(
@@ -532,6 +538,7 @@ async function executeParallel(
 			const branchCtx: ExecutorContext = {
 				...ectx,
 				cwd: wt?.worktreePath ?? ectx.cwd,
+				stepGroup: parGroup,
 			};
 			return executeRunnable(step, input, original, branchCtx);
 		});

@@ -183,6 +183,7 @@ export interface StepResult {
 	gateResult?: { passed: boolean; reason: string };
 	error?: string;
 	elapsed: number; // ms
+	group?: string; // parallel/pool group label this step belongs to
 }
 
 export interface PipelineState {

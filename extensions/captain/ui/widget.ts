@@ -2,7 +2,7 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Text, truncateToWidth } from "@mariozechner/pi-tui";
-import type { PipelineState } from "../types.js";
+import type { PipelineState, StepResult } from "../types.js";
 
 /** Map step status to theme color name */
 export function statusColor(status: string): string {
@@ -12,7 +12,7 @@ export function statusColor(status: string): string {
 	return "dim";
 }
 
-/** Map step status to a single visual icon (agent-team style) */
+/** Map step status to a single visual icon */
 export function statusDot(status: string): string {
 	if (status === "passed") return "✓";
 	if (status === "failed") return "✗";
@@ -21,72 +21,93 @@ export function statusDot(status: string): string {
 	return "○";
 }
 
-/** Render a single step as a bordered card */
-export function renderStepCard(
-	label: string,
-	status: string,
-	elapsed: number,
-	detail: string,
-	colWidth: number,
-	// biome-ignore lint/suspicious/noExplicitAny: pi theme API is not typed
-	theme: any,
-): string[] {
-	const w = colWidth - 2;
-	const truncate = (s: string, max: number) =>
-		s.length > max ? `${s.slice(0, max - 3)}...` : s;
-
-	const color = statusColor(status);
-	const dot = statusDot(status);
-	const timeStr = elapsed > 0 ? ` ${elapsed.toFixed(1)}s` : "";
-
-	const nameRaw = truncate(label, w - 1);
-	const nameStr = theme.fg("accent", theme.bold(nameRaw));
-
-	const statusRaw = `${dot} ${status}${timeStr}`;
-	const statusStr = theme.fg(color, statusRaw);
-
-	const detailRaw = truncate(detail, w - 1);
-	const detailStr = theme.fg("muted", detailRaw);
-
-	const top = `┌${"─".repeat(w)}┐`;
-	const bot = `└${"─".repeat(w)}┘`;
-	const border = (content: string, visLen: number) =>
-		theme.fg("dim", "│") +
-		content +
-		" ".repeat(Math.max(0, w - visLen)) +
-		theme.fg("dim", "│");
-
-	return [
-		theme.fg("dim", top),
-		border(` ${nameStr}`, 1 + nameRaw.length),
-		border(` ${statusStr}`, 1 + statusRaw.length),
-		border(` ${detailStr}`, 1 + detailRaw.length),
-		theme.fg("dim", bot),
-	];
+/** Pick the trailing detail text for a step (last stream line or error) */
+function stepDetail(r: StepResult): string {
+	if (r.output)
+		return (
+			r.output
+				.split("\n")
+				.filter((l) => l.trim())
+				.at(-1) ?? ""
+		);
+	return r.error ?? "";
 }
 
-/** Render a grid of step cards into lines */
-export function renderStepGrid(
-	results: PipelineState["results"],
+/** Truncate a detail string to fit available width */
+function truncateDetail(detail: string, available: number): string {
+	if (!detail || available <= 6) return "";
+	return detail.length > available
+		? `${detail.slice(0, available - 3)}...`
+		: detail;
+}
+
+/** Render one step as a compact single line */
+function renderStepLine(
+	r: StepResult,
+	width: number,
+	indent: number,
+	// biome-ignore lint/suspicious/noExplicitAny: pi theme API is not typed
+	theme: any,
+): string {
+	const pad = " ".repeat(indent);
+	const dot = theme.fg(statusColor(r.status), statusDot(r.status));
+	const name = theme.fg(r.status === "running" ? "accent" : "dim", r.label);
+	const timeStr = r.elapsed > 0 ? ` ${(r.elapsed / 1000).toFixed(1)}s` : "";
+	const time = timeStr ? theme.fg("dim", timeStr) : "";
+	const fixedLen = indent + 2 + r.label.length + timeStr.length;
+	const detailTrunc = truncateDetail(stepDetail(r), width - fixedLen - 2);
+	const detail = detailTrunc ? theme.fg("muted", `  ${detailTrunc}`) : "";
+	return truncateToWidth(`${pad}${dot} ${name}${time}${detail}`, width);
+}
+
+/** Append one step's line to output, emit a group header if needed. Returns current group. */
+function appendStepLine(
+	lines: string[],
+	r: StepResult,
+	lastGroup: string | undefined,
+	width: number,
+	// biome-ignore lint/suspicious/noExplicitAny: pi theme API is not typed
+	theme: any,
+): string | undefined {
+	let currentGroup = lastGroup;
+	if (r.group && r.group !== lastGroup) {
+		lines.push(theme.fg("dim", `  ┬ ${r.group}`));
+		currentGroup = r.group;
+	} else if (!r.group) {
+		currentGroup = undefined;
+	}
+	if (r.group) {
+		lines.push(
+			`${theme.fg("dim", "  │")}${renderStepLine(r, width - 3, 1, theme)}`,
+		);
+	} else {
+		lines.push(renderStepLine(r, width, 2, theme));
+	}
+	return currentGroup;
+}
+
+/** Render all steps as compact lines, grouping parallel/pool under a header */
+export function renderStepList(
+	results: StepResult[],
 	currentStep: string | undefined,
 	currentStepStream: string | undefined,
 	width: number,
 	// biome-ignore lint/suspicious/noExplicitAny: pi theme API is not typed
 	theme: any,
 ): string[] {
-	const streamDetail = currentStepStream
+	const streamTail = currentStepStream
 		? (currentStepStream
 				.split("\n")
 				.filter((l) => l.trim())
 				.at(-1) ?? "")
 		: "";
-	const all: PipelineState["results"] = currentStep
+	const all: StepResult[] = currentStep
 		? [
 				...results,
 				{
 					label: currentStep,
 					status: "running",
-					output: streamDetail,
+					output: streamTail,
 					elapsed: 0,
 				},
 			]
@@ -94,35 +115,15 @@ export function renderStepGrid(
 
 	if (all.length === 0) return [theme.fg("dim", "  Waiting for steps...")];
 
-	const cols = Math.min(2, all.length);
-	const gap = 1;
-	const colWidth = Math.floor((width - gap * (cols - 1)) / cols);
 	const lines: string[] = [];
-
-	for (let i = 0; i < all.length; i += cols) {
-		const rowSteps = all.slice(i, i + cols);
-		const cards = rowSteps.map((r) =>
-			renderStepCard(
-				r.label,
-				r.status,
-				r.elapsed / 1000,
-				r.error ?? r.output?.slice(0, 80) ?? "",
-				colWidth,
-				theme,
-			),
-		);
-		while (cards.length < cols)
-			cards.push(new Array(5).fill(" ".repeat(colWidth)));
-		const cardHeight = cards[0].length;
-		for (let line = 0; line < cardHeight; line++) {
-			lines.push(cards.map((c) => c[line] ?? "").join(" ".repeat(gap)));
-		}
+	let lastGroup: string | undefined;
+	for (const r of all) {
+		lastGroup = appendStepLine(lines, r, lastGroup, width, theme);
 	}
-
 	return lines;
 }
 
-/** Update the live widget showing pipeline progress (grid of step cards) */
+/** Update the live widget showing pipeline progress */
 export function updateWidget(ctx: ExtensionContext, state: PipelineState) {
 	ctx.ui.setWidget("captain", (_tui, theme) => {
 		const text = new Text("", 0, 1);
@@ -131,7 +132,6 @@ export function updateWidget(ctx: ExtensionContext, state: PipelineState) {
 				const elapsed = state.startTime
 					? ((Date.now() - state.startTime) / 1000).toFixed(1)
 					: "0";
-
 				const headerLabel = `  Captain: ${state.name}`;
 				const headerRight = `${elapsed}s `;
 				const headerPad = " ".repeat(
@@ -141,12 +141,11 @@ export function updateWidget(ctx: ExtensionContext, state: PipelineState) {
 					theme.fg("accent", theme.bold(headerLabel)) +
 					headerPad +
 					theme.fg("dim", headerRight);
-
 				const lines: string[] = [
 					theme.fg("accent", "─".repeat(width)),
 					truncateToWidth(header, width),
 					theme.fg("accent", "─".repeat(width)),
-					...renderStepGrid(
+					...renderStepList(
 						state.results,
 						state.currentStep,
 						state.currentStepStream,
@@ -154,7 +153,6 @@ export function updateWidget(ctx: ExtensionContext, state: PipelineState) {
 						theme,
 					),
 				];
-
 				text.setText(lines.join("\n"));
 				return text.render(width);
 			},
