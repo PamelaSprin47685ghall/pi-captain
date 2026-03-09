@@ -375,7 +375,7 @@ export function registerCommands(pi: ExtensionAPI, state: CaptainState) {
 				return;
 			}
 			try {
-				let result: { name: string; agentCount: number; spec: Runnable };
+				let result: { name: string; spec: Runnable };
 				if (state.builtinPresetMap[name]) {
 					result = state.loadBuiltinPreset(name);
 				} else {

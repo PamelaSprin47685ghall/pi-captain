@@ -61,7 +61,7 @@ async function loadPreset(state: CaptainState, name: string, cwd: string) {
 			content: [
 				{
 					type: "text" as const,
-					text: `Loaded pipeline "${resolved.name}" (${resolved.agentCount} agents)${resolved.source ? ` from ${resolved.source}` : ""}\n\n${summary}`,
+					text: `Loaded pipeline "${resolved.name}"${resolved.source ? ` from ${resolved.source}` : ""}\n\n${summary}`,
 				},
 			],
 			details: state.snapshot(),
