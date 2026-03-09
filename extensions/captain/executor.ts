@@ -230,7 +230,6 @@ async function runStepCore(
 	output = output.trim();
 
 	const gateCtx = {
-		output,
 		exec: ectx.exec,
 		confirm: ectx.confirm,
 		hasUI: ectx.hasUI,
@@ -242,7 +241,7 @@ async function runStepCore(
 	};
 
 	const gateResult = step.gate
-		? await runGate(step.gate, gateCtx)
+		? await runGate(step.gate, output, gateCtx)
 		: { passed: true, reason: "No gate" };
 
 	if (!gateResult.passed) {
@@ -304,8 +303,8 @@ async function executeStep(
 // ── Shared Gate + OnFail for Composition Nodes ────────────────────────────
 
 // OnFail coverage in gateCheck (container-level gate failures — sequential, pool, parallel):
+// OnFail is now a function (ctx) => OnFailResult. Decision is evaluated per failure.
 // retry ✓  retryWithDelay ✓  skip ✓  warn ✓  fallback ✓
-// All five actions from types.ts OnFail union are handled below.
 async function gateCheck(
 	output: string,
 	results: StepResult[],
@@ -318,8 +317,7 @@ async function gateCheck(
 ): Promise<{ output: string; results: StepResult[] }> {
 	if (!gate) return { output, results };
 
-	const gateResult = await runGate(gate, {
-		output,
+	const gateResult = await runGate(gate, output, {
 		exec: ectx.exec,
 		confirm: ectx.confirm,
 		hasUI: ectx.hasUI,
@@ -343,16 +341,22 @@ async function gateCheck(
 		return { output, results: [...results, gateStepResult] };
 	if (!onFail) return { output, results: [...results, gateStepResult] };
 
-	switch (onFail.action) {
+	const decision = await onFail({
+		reason: gateResult.reason,
+		retryCount,
+		output,
+	});
+
+	switch (decision.action) {
 		case "retry":
 		case "retryWithDelay": {
-			const max = onFail.max ?? 3;
+			const max = decision.max ?? 3;
 			if (retryCount >= max) {
 				gateStepResult.error = `Gate failed after ${max} retries: ${gateResult.reason}`;
 				return { output, results: [...results, gateStepResult] };
 			}
-			if (onFail.action === "retryWithDelay") {
-				await new Promise((r) => setTimeout(r, onFail.delayMs));
+			if (decision.action === "retryWithDelay") {
+				await new Promise((r) => setTimeout(r, decision.delayMs));
 			}
 			const retried = await rerunFn();
 			return gateCheck(
@@ -378,15 +382,15 @@ async function gateCheck(
 			return { output, results: [...results, gateStepResult] };
 
 		case "fallback": {
-			const fallback = await executeStep(
-				{ ...onFail.step, kind: "step" },
+			const fallbackResult = await executeStep(
+				{ ...decision.step, kind: "step" },
 				output,
 				output,
 				ectx,
 			);
 			return {
-				output: fallback.output,
-				results: [...results, gateStepResult, ...fallback.results],
+				output: fallbackResult.output,
+				results: [...results, gateStepResult, ...fallbackResult.results],
 			};
 		}
 
@@ -420,7 +424,7 @@ async function executeSequential(
 		if (lastResult?.status === "failed") break;
 	}
 
-	return gateCheck(
+	const checked = await gateCheck(
 		currentInput,
 		allResults,
 		seq.gate,
@@ -430,6 +434,10 @@ async function executeSequential(
 		ectx,
 		0,
 	);
+	if (seq.transform) {
+		checked.output = await applyTransform(seq.transform, checked.output, ectx);
+	}
+	return checked;
 }
 
 // ── Pool ──────────────────────────────────────────────────────────────────
@@ -483,7 +491,7 @@ async function executePool(
 			apiKey: ectx.apiKey,
 			signal: ectx.signal,
 		});
-		return gateCheck(
+		const checked = await gateCheck(
 			merged,
 			allResults,
 			pool.gate,
@@ -493,6 +501,14 @@ async function executePool(
 			ectx,
 			0,
 		);
+		if (pool.transform) {
+			checked.output = await applyTransform(
+				pool.transform,
+				checked.output,
+				ectx,
+			);
+		}
+		return checked;
 	} finally {
 		for (const wt of worktrees)
 			await removeWorktree(
@@ -551,7 +567,7 @@ async function executeParallel(
 			apiKey: ectx.apiKey,
 			signal: ectx.signal,
 		});
-		return gateCheck(
+		const checked = await gateCheck(
 			merged,
 			allResults,
 			par.gate,
@@ -561,6 +577,14 @@ async function executeParallel(
 			ectx,
 			0,
 		);
+		if (par.transform) {
+			checked.output = await applyTransform(
+				par.transform,
+				checked.output,
+				ectx,
+			);
+		}
+		return checked;
 	} finally {
 		for (const wt of worktrees)
 			await removeWorktree(
@@ -640,8 +664,8 @@ async function applyTransform(
 }
 
 // OnFail coverage in handleFailure (step-level gate failures):
+// OnFail is now a function (ctx) => OnFailResult. Decision is evaluated per failure.
 // retry ✓  retryWithDelay ✓  skip ✓  warn ✓  fallback ✓
-// All five actions from types.ts OnFail union are handled below.
 async function handleFailure(
 	step: Step,
 	input: string,
@@ -656,11 +680,18 @@ async function handleFailure(
 	error?: string;
 }> {
 	const onFail = step.onFail;
+	if (!onFail)
+		return { status: "failed", output: lastOutput, error: gateResult.reason };
+	const decision = await onFail({
+		reason: gateResult.reason,
+		retryCount,
+		output: lastOutput,
+	});
 
-	switch (onFail.action) {
+	switch (decision.action) {
 		case "retry":
 		case "retryWithDelay": {
-			const max = onFail.max ?? 3;
+			const max = decision.max ?? 3;
 			if (retryCount >= max) {
 				return {
 					status: "failed",
@@ -668,25 +699,44 @@ async function handleFailure(
 					error: `Gate failed after ${max} retries: ${gateResult.reason}`,
 				};
 			}
-			if (onFail.action === "retryWithDelay") {
-				await new Promise((r) => setTimeout(r, onFail.delayMs));
+			if (decision.action === "retryWithDelay") {
+				await new Promise((r) => setTimeout(r, decision.delayMs));
 			}
 			const retryPrompt = `${step.prompt}\n\n[RETRY ${retryCount + 1}/${max}: Previous attempt failed gate: ${gateResult.reason}]\n\nPrevious output:\n${lastOutput.slice(0, 1000)}`;
-			const retryStep: Step = { ...step, prompt: retryPrompt };
-			const { output, results } = await executeStep(
+			// Strip gate/onFail so the retry step doesn't recursively spawn its own
+			// retry budget — the gate is evaluated here, in the outer handleFailure loop.
+			const retryStep: Step = {
+				...step,
+				prompt: retryPrompt,
+				gate: undefined,
+				onFail: undefined,
+			};
+			const { output: retryOutput } = await executeStep(
 				retryStep,
 				input,
 				original,
 				ectx,
 			);
-			const lastResult = results.at(-1);
-			if (lastResult?.status === "passed") return { status: "passed", output };
+			const retryGateResult = step.gate
+				? await runGate(step.gate, retryOutput, {
+						exec: ectx.exec,
+						confirm: ectx.confirm,
+						hasUI: ectx.hasUI,
+						cwd: ectx.cwd,
+						signal: ectx.signal,
+						model: ectx.model,
+						apiKey: ectx.apiKey,
+						modelRegistry: ectx.modelRegistry,
+					})
+				: { passed: true, reason: "No gate" };
+			if (retryGateResult.passed)
+				return { status: "passed", output: retryOutput };
 			return handleFailure(
 				step,
 				input,
 				original,
-				output,
-				lastResult?.gateResult ?? gateResult,
+				retryOutput,
+				retryGateResult,
 				ectx,
 				retryCount + 1,
 			);
@@ -708,7 +758,7 @@ async function handleFailure(
 
 		case "fallback": {
 			const { output } = await executeStep(
-				{ ...onFail.step, kind: "step" },
+				{ ...decision.step, kind: "step" },
 				input,
 				original,
 				ectx,

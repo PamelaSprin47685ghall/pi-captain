@@ -5,6 +5,7 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import type { ExecutorContext } from "../executor.js";
 import { executeRunnable } from "../executor.js";
+import { skip } from "../gates/on-fail.js";
 import type { CaptainState } from "../state.js";
 import type { PipelineState, Runnable, Step } from "../types.js";
 import {
@@ -58,8 +59,8 @@ function buildAdHocStep(prompt: string, flags: Record<string, string>): Step {
 		prompt,
 		model: modelId,
 		tools: toolsList ?? ["read", "bash", "edit", "write"],
-		gate: { type: "none" },
-		onFail: { action: "skip" },
+		gate: undefined,
+		onFail: skip,
 		transform: { kind: "full" },
 	};
 }

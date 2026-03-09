@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ExecutorContext } from "./executor.js";
-
+import { skip, warn } from "./gates/on-fail.js";
 import type { Parallel, Pool, Sequential, Step } from "./types.js";
 
 // ── Shared mutable session config ──────────────────────────────────────────
@@ -76,7 +76,7 @@ function makeStep(label: string, prompt = "do $INPUT"): Step {
 		kind: "step",
 		label,
 		prompt,
-		onFail: { action: "skip" },
+		onFail: skip,
 		transform: { kind: "full" },
 	};
 }
@@ -155,7 +155,7 @@ describe("executeRunnable: step", () => {
 			...makeStep("gated"),
 			gate: ({ output }) =>
 				output.includes("REQUIRED") ? true : "Missing REQUIRED in output",
-			onFail: { action: "skip" },
+			onFail: skip,
 		};
 		const { output, results } = await executeRunnable(step, "", "", makeCtx());
 		expect(output).toBe("");
@@ -168,7 +168,7 @@ describe("executeRunnable: step", () => {
 			...makeStep("warned"),
 			gate: ({ output }) =>
 				output.includes("REQUIRED") ? true : "Missing REQUIRED in output",
-			onFail: { action: "warn" },
+			onFail: warn,
 		};
 		const { output, results } = await executeRunnable(step, "", "", makeCtx());
 		expect(output).toBe("output without keyword"); // warn keeps output
@@ -431,7 +431,7 @@ describe("executeRunnable: sequential", () => {
 			steps: [makeStep("a")],
 			gate: ({ output }) =>
 				output.includes("REQUIRED") ? true : "Missing REQUIRED in output",
-			onFail: { action: "skip" },
+			onFail: skip,
 		};
 
 		const { output } = await seqExecute(seq, "", "", makeCtx());
@@ -480,7 +480,7 @@ describe("executeRunnable: sequential", () => {
 			steps: [makeStep("a")],
 			gate: ({ output }) =>
 				output.includes("REQUIRED") ? true : "Missing REQUIRED in output",
-			onFail: { action: "warn" },
+			onFail: warn,
 		};
 
 		const { output } = await seqExecute(seq, "", "", makeCtx());

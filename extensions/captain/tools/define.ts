@@ -21,7 +21,7 @@ export function registerDefineTool(pi: ExtensionAPI, state: CaptainState) {
 			"  - jsonOutput?: true  → passes --mode json to pi (step output is structured JSON)",
 			"  - gate: { type: 'command'|'user'|'file'|'assert'|'llm'|'none', value }",
 			"  - llm gate: { type: 'llm', prompt: 'evaluation criteria', model?: 'flash', threshold?: 0.7 }",
-			"  - onFail: { action: 'retry'|'skip'|'fallback', max?, step? }",
+			"  - onFail: retry(N) | retryWithDelay(N, ms) | skip | warn | fallback(step) | custom fn",
 			"  - transform: { kind: 'full'|'extract'|'summarize', key? }",
 			"",
 			"Sequential: { kind: 'sequential', steps: Runnable[], gate?, onFail? }",

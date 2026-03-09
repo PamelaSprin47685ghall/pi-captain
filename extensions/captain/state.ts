@@ -4,6 +4,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { deserializeRunnable } from "./deserialize.js";
 import * as builtinPipelines from "./pipelines/index.js";
 import type { CaptainDetails, PipelineState, Runnable } from "./types.js";
 import { describeRunnable } from "./utils/index.js";
@@ -36,12 +37,34 @@ export class CaptainState {
 	// ── Snapshot ─────────────────────────────────────────────────────────
 
 	snapshot(lastRun?: PipelineState): CaptainDetails {
-		return {
-			pipelines: { ...this.pipelines },
-			lastRun: lastRun
-				? { name: lastRun.name, state: { ...lastRun } }
-				: undefined,
-		};
+		// Strip function values (gate, onFail) so the snapshot is structuredClone-safe.
+		// JSON round-trip removes functions (they become undefined → dropped).
+		const stripFns = <T>(v: T): T =>
+			JSON.parse(
+				JSON.stringify(v, (_k, val) =>
+					typeof val === "function" ? undefined : val,
+				),
+			);
+
+		const pipelines: Record<string, { spec: Runnable }> = {};
+		for (const [name, p] of Object.entries(this.pipelines)) {
+			pipelines[name] = { spec: stripFns(p.spec) };
+		}
+
+		let lastRunSnapshot: CaptainDetails["lastRun"] | undefined;
+		if (lastRun) {
+			lastRunSnapshot = {
+				name: lastRun.name,
+				state: {
+					...stripFns(lastRun),
+					// Restore non-serializable runtime collections
+					currentSteps: new Set(),
+					currentStepStreams: new Map(),
+				},
+			};
+		}
+
+		return { pipelines, lastRun: lastRunSnapshot };
 	}
 
 	// ── Preset Discovery & Loading ────────────────────────────────────────
@@ -69,8 +92,10 @@ export class CaptainState {
 			);
 		}
 		const name = basename(filePath, ".json");
-		this.pipelines[name] = { spec: data.pipeline };
-		return { name, spec: data.pipeline };
+		// Deserialize JSON gate/onFail objects into their function equivalents
+		const spec = deserializeRunnable(data.pipeline);
+		this.pipelines[name] = { spec };
+		return { name, spec };
 	}
 
 	async loadTsPipelineFile(filePath: string): Promise<{

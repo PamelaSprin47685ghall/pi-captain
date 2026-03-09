@@ -25,61 +25,69 @@ Captain turns pi into a pipeline orchestration platform. Define typed pipeline s
 
 | Tool | Purpose |
 |------|---------|
-| `captain_define` | Define a pipeline from a JSON Runnable spec |
-| `captain_load` | Load a precreated pipeline from a preset or JSON file |
+| `captain_load` | Load a pipeline from a `.ts` file or builtin preset |
 | `captain_run` | Execute a defined pipeline with input |
 | `captain_status` | Check step-by-step results of a pipeline |
 | `captain_list` | List all defined pipelines |
-| `captain_generate` | Auto-generate a pipeline from a goal description |
 
 ## Quick Start
 
-### 1. Define a pipeline
+### 1. Write a TypeScript pipeline file
 
-Each step declares its own `tools`, `model`, and `temperature` inline — no separate agent setup needed.
+Pipelines are **TypeScript files** that export a `pipeline` const of type `Runnable`.
+Gates and onFail handlers are **plain functions** — no JSON encoding needed.
+
+```ts
+// my-pipeline.ts
+import { retry, skip, warn } from "<captain>/gates/on-fail.js";
+import { bunTest, command, regexCI, user } from "<captain>/gates/presets.js";
+import { llmFast } from "<captain>/gates/llm.js";
+import type { Gate, OnFail, Runnable, Step } from "<captain>/types.js";
+
+const research: Step = {
+  kind: "step",
+  label: "Research",
+  model: "sonnet",
+  tools: ["read", "bash"],
+  prompt: "Research the following topic thoroughly:\n$ORIGINAL",
+  gate: undefined,
+  onFail: skip,
+  transform: { kind: "full" },
+};
+
+const implement: Step = {
+  kind: "step",
+  label: "Implement",
+  model: "sonnet",
+  tools: ["read", "bash", "edit", "write"],
+  prompt: "Based on this research:\n$INPUT\n\nImplement: $ORIGINAL",
+  gate: bunTest,                // runs `bun test`, passes on exit 0
+  onFail: retry(3),
+  transform: { kind: "full" },
+};
+
+const review: Step = {
+  kind: "step",
+  label: "Review",
+  model: "flash",
+  tools: ["read", "bash"],
+  temperature: 0.3,
+  prompt: "Review this implementation:\n$INPUT\n\nOriginal: $ORIGINAL",
+  gate: user,                   // requires human approval in interactive UI
+  onFail: skip,
+  transform: { kind: "summarize" },
+};
+
+export const pipeline: Runnable = {
+  kind: "sequential",
+  steps: [research, implement, review],
+};
+```
+
+### 2. Load and run it
 
 ```
-captain_define: name="my-pipeline", spec='{
-  "kind": "sequential",
-  "steps": [
-    {
-      "kind": "step",
-      "label": "Research",
-      "model": "sonnet",
-      "tools": ["read", "bash"],
-      "prompt": "Research the following topic thoroughly:\n$ORIGINAL",
-      "gate": { "type": "none" },
-      "onFail": { "action": "skip" },
-      "transform": { "kind": "full" }
-    },
-    {
-      "kind": "step",
-      "label": "Implement",
-      "model": "sonnet",
-      "tools": ["read", "bash", "edit", "write"],
-      "prompt": "Based on this research:\n$INPUT\n\nImplement: $ORIGINAL",
-      "gate": { "type": "command", "value": "bun test" },
-      "onFail": { "action": "retry", "max": 3 },
-      "transform": { "kind": "full" }
-    },
-    {
-      "kind": "step",
-      "label": "Review",
-      "model": "flash",
-      "tools": ["read", "bash"],
-      "temperature": 0.3,
-      "prompt": "Review this implementation:\n$INPUT\n\nOriginal: $ORIGINAL",
-      "gate": { "type": "user", "value": true },
-      "onFail": { "action": "skip" },
-      "transform": { "kind": "summarize" }
-    }
-  ]
-}'
-```
-
-### 2. Run it
-
-```
+captain_load: action="load", name="./my-pipeline.ts"
 captain_run: name="my-pipeline", input="Build a REST API for user management"
 ```
 
@@ -96,55 +104,118 @@ captain_run: name="my-pipeline", input="Build a REST API for user management"
 | `skills` | string[] | — | Additional skill file paths to inject |
 | `extensions` | string[] | — | Additional extension file paths to load |
 | `jsonOutput` | boolean | `false` | Instructs step to produce structured JSON |
-| `gate` | Gate | required | Validation after step runs |
-| `onFail` | OnFail | required | What to do when gate fails |
+| `gate` | Gate | `undefined` | Validation after step runs (function) |
+| `onFail` | OnFail | required | What to do when gate fails (function) |
 | `transform` | Transform | required | How to pass output to the next step |
+
+## Gates — Plain Functions
+
+A `Gate` is: `({ output, ctx? }) => true | string | Promise<true | string>`
+
+- Return `true` → gate passed
+- Return a `string` → gate failed, string is the reason
+- `throw` → gate failed, error message becomes the reason
+
+### Inline gate
+
+```ts
+// Simple output check
+gate: ({ output }) => output.includes("DONE") ? true : 'Output must contain "DONE"'
+
+// JSON validity check
+gate: ({ output }) => {
+  try { JSON.parse(output.trim()); return true; }
+  catch { return "Output is not valid JSON"; }
+}
+
+// Stateful gate using closure (replaces shell temp-file hacks)
+let attempts = 0;
+gate: ({ output }) => {
+  attempts++;
+  return attempts >= 3 ? true : `Need 3 attempts, got ${attempts}`;
+}
+```
+
+### Shell command in gate
+
+```ts
+gate: async ({ ctx }) => {
+  const { code, stderr } = await ctx!.exec("bash", ["-c", "bun test"]);
+  return code === 0 ? true : `Tests failed: ${stderr.slice(0, 200)}`;
+}
+```
+
+### Gate presets (import from `gates/presets.js`)
+
+| Preset | Behavior |
+|--------|----------|
+| `bunTest` | Runs `bun test`, passes on exit 0 |
+| `command("npm test")` | Runs any shell command |
+| `file("dist/index.js")` | File must exist |
+| `regexCI("^ok")` | Output must match regex (case-insensitive) |
+| `user` | Human must approve in interactive UI |
+| `allOf(gate1, gate2)` | All gates must pass |
+| `llmFast("Is this correct?", 0.8)` | LLM judges quality (threshold 0–1) |
+
+## Failure Handling — Plain Functions
+
+An `OnFail` is: `(ctx: OnFailCtx) => OnFailResult | Promise<OnFailResult>`
+
+### OnFail presets (import from `gates/on-fail.js`)
+
+| Preset | Behavior |
+|--------|----------|
+| `retry(3)` | Re-run up to 3 times |
+| `retryWithDelay(3, 2000)` | Re-run up to 3 times, wait 2s between |
+| `skip` | Pass empty string downstream |
+| `warn` | Log warning, treat as passed |
+| `fallback(myStep)` | Run an alternative step instead |
+
+### Custom onFail
+
+```ts
+// Retry twice, then warn
+onFail: ({ retryCount }) => retryCount < 2 ? { action: "retry" } : { action: "warn" }
+```
 
 ## Loading Pipeline Presets
 
 ```
 captain_load: action="list"
-captain_load: action="load", name="research-and-summarize"
-captain_load: action="load", name="./my-pipeline.json"
-```
-
-Preset file format:
-```json
-{
-  "pipeline": {
-    "kind": "sequential",
-    "steps": [...]
-  }
-}
+captain_load: action="load", name="captain:showcase"
+captain_load: action="load", name="./my-pipeline.ts"
 ```
 
 ## Composition Patterns
 
 ### Sequential — chain via $INPUT
-```json
-{ "kind": "sequential", "steps": [...] }
+
+```ts
+export const pipeline: Runnable = {
+  kind: "sequential",
+  steps: [stepA, stepB, stepC],
+};
 ```
 
 ### Parallel — different steps concurrently (each in own git worktree)
-```json
-{
-  "kind": "parallel",
-  "steps": [
-    { "kind": "step", "label": "Frontend", "tools": ["read","bash","edit","write"], "..." : "..." },
-    { "kind": "step", "label": "Backend",  "tools": ["read","bash","edit","write"], "..." : "..." }
-  ],
-  "merge": { "strategy": "concat" }
-}
+
+```ts
+export const pipeline: Runnable = {
+  kind: "parallel",
+  steps: [frontendStep, backendStep],
+  merge: { strategy: "concat" },
+};
 ```
 
 ### Pool — same step × N (each in own git worktree)
-```json
-{
-  "kind": "pool",
-  "step": { "kind": "step", "label": "Solve", "tools": ["read","bash","edit","write"], "..." : "..." },
-  "count": 3,
-  "merge": { "strategy": "vote" }
-}
+
+```ts
+export const pipeline: Runnable = {
+  kind: "pool",
+  step: solveStep,
+  count: 3,
+  merge: { strategy: "vote" },
+};
 ```
 
 ## Merge Strategies
@@ -156,26 +227,6 @@ Preset file format:
 | `firstPass` | Take the first successful output |
 | `vote` | LLM picks the best/most common answer |
 | `rank` | LLM ranks outputs and returns the top one |
-
-## Gate Types
-
-| Gate | Use When |
-|------|----------|
-| `{ "type": "none" }` | No validation needed |
-| `{ "type": "command", "value": "bun test" }` | Code must pass tests |
-| `{ "type": "file", "value": "dist/index.js" }` | Build output must exist |
-| `{ "type": "user", "value": true }` | Human must approve |
-| `{ "type": "assert", "fn": "output.includes('OK')" }` | Output must match condition |
-| `{ "type": "llm", "prompt": "Is this production-ready?", "threshold": 0.8 }` | LLM evaluation |
-
-## Failure Handling
-
-| OnFail | Behavior |
-|--------|----------|
-| `{ "action": "retry", "max": 3 }` | Re-run up to N times |
-| `{ "action": "skip" }` | Pass empty downstream |
-| `{ "action": "warn" }` | Log warning, continue |
-| `{ "action": "fallback", "step": {...} }` | Run alternative step |
 
 ## Prompt Variables
 

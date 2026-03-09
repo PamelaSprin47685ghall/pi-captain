@@ -6,6 +6,7 @@
 // guard block that sits in front of the existing pipeline-lookup logic.
 
 import { describe, expect, mock, test } from "bun:test";
+import { skip } from "../gates/on-fail.js";
 import type { CaptainState } from "../state.js";
 import type { Runnable } from "../types.js";
 
@@ -69,10 +70,10 @@ const SIMPLE_PIPELINE: Runnable = {
 	kind: "step",
 	label: "test-step",
 	prompt: "do $INPUT",
-	gate: { type: "none" },
-	onFail: { action: "skip" },
+	gate: undefined,
+	onFail: skip,
 	transform: { kind: "full" },
-} as unknown as Runnable;
+};
 
 function makeMinimalState(
 	options: {

@@ -18,7 +18,16 @@
 // Run: captain_run { name: "captain:showcase", input: "list 5 hobbies" }
 // Load: captain_load { action: "load", name: "captain:showcase" }
 
-import type { Parallel, Pool, Runnable, Sequential, Step } from "../types.js";
+import { fallback as onFailFallback, retry, warn } from "../gates/on-fail.js";
+import { regexCI } from "../gates/presets.js";
+import type {
+	OnFail,
+	Parallel,
+	Pool,
+	Runnable,
+	Sequential,
+	Step,
+} from "../types.js";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -26,8 +35,8 @@ import type { Parallel, Pool, Runnable, Sequential, Step } from "../types.js";
 
 const flash = "flash";
 const noTools: string[] = [];
-const noGate = { type: "none" } as const;
-const noFail = { action: "warn" } as const;
+const noGate = undefined;
+const noFail: OnFail = warn;
 const full = { kind: "full" } as const;
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -62,11 +71,9 @@ Keep the original numbering.
 
 Ideas:
 $INPUT`,
-	gate: {
-		type: "assert",
-		fn: `output.includes("1.")`,
-	},
-	onFail: { action: "retry", max: 2 },
+	gate: ({ output }) =>
+		output.includes("1.") ? true : 'Output must include "1."',
+	onFail: retry(2),
 	transform: full,
 };
 
@@ -122,12 +129,8 @@ const ranker: Step = {
 Return ONLY a numbered list of the top 3 with a one-line reason each.
 
 $INPUT`,
-	gate: {
-		type: "regex",
-		pattern: "^1\\.",
-		flags: "m",
-	},
-	onFail: { action: "warn" },
+	gate: regexCI("^1\\."),
+	onFail: warn,
 	transform: full,
 };
 
@@ -169,8 +172,15 @@ const formatStep: Step = {
 
 Summary:
 $INPUT`,
-	gate: { type: "json" },
-	onFail: { action: "retry", max: 2 },
+	gate: ({ output }) => {
+		try {
+			JSON.parse(output.trim());
+			return true;
+		} catch {
+			return "Output is not valid JSON";
+		}
+	},
+	onFail: retry(2),
 	transform: { kind: "extract", key: "winner" },
 };
 
@@ -185,11 +195,9 @@ const warnDemo: Step = {
 	model: flash,
 	tools: noTools,
 	prompt: `Say: "The winner is: $INPUT. Great choice!"`,
-	gate: {
-		type: "assert",
-		fn: `output.trim() === "42"`, // will always fail — output is a sentence
-	},
-	onFail: { action: "warn" },
+	gate: ({ output }) =>
+		output.trim() === "42" ? true : "Output must be exactly '42'",
+	onFail: warn,
 	transform: full,
 };
 
@@ -215,12 +223,22 @@ const fallbackDemo: Step = {
 	model: flash,
 	tools: noTools,
 	prompt: `Output ONLY the word "FAIL" — nothing else.`,
-	gate: {
-		type: "assert",
-		fn: `output.trim() !== "FAIL"`, // will always fail
-	},
-	onFail: { action: "fallback", step: fallbackStep },
+	gate: ({ output }) =>
+		output.trim() !== "FAIL" ? true : "Output must not be 'FAIL'",
+	onFail: onFailFallback(fallbackStep),
 	transform: full,
+};
+
+const retryGussePassword: Step = {
+	kind: "step",
+	label: "find password",
+	model: "flash",
+	prompt: "find the password",
+	gate: ({ output }) => output === "qsgawkdjalkwjdlakwd" || "wrong pass",
+	onFail: retry(2),
+	transform: {
+		kind: "full",
+	},
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -238,6 +256,7 @@ export const pipeline: Runnable = {
 		formatStep, //  6️⃣  JSON gate + extract transform
 		warnDemo, //  7️⃣  warn onFail demo
 		fallbackDemo, //  8️⃣  fallback onFail demo
+		retryGussePassword, // 9 retry
 	],
 	gate: noGate,
 } satisfies Sequential;

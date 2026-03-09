@@ -1,12 +1,10 @@
 // ── Captain: Pipeline Orchestration Types ──────────────────────────────────
 
 /**
- * Context passed to every gate function.
- * Gates receive the step output plus execution helpers (shell, UI, LLM).
+ * Side-effect helpers available to gates that need shell, UI, or LLM access.
+ * Simple gates that only inspect output can ignore this entirely.
  */
 export interface GateCtx {
-	/** The step's output text to validate */
-	output: string;
 	/** Working directory for shell commands */
 	cwd: string;
 	signal?: AbortSignal;
@@ -28,19 +26,60 @@ export interface GateCtx {
 }
 
 /**
- * A gate is a plain function: receives context (including step output) and
- * returns true to pass, or a string describing why it failed.
+ * A gate is a plain function: receives the step output and optional side-effect
+ * context. Returns true to pass, or a string describing why it failed.
  * Async gates are allowed. Throwing is also treated as a failure.
  */
-export type Gate = (ctx: GateCtx) => string | true | Promise<string | true>;
+export type Gate = (params: {
+	output: string;
+	ctx?: GateCtx;
+}) => true | string | Promise<true | string>;
 
-/** Failure handling strategy */
-export type OnFail =
+/**
+ * Context passed to an OnFail handler — describes why and how many times we've failed.
+ */
+export interface OnFailCtx {
+	/** The gate failure reason */
+	reason: string;
+	/** How many retries have already been attempted (0 on first failure) */
+	retryCount: number;
+	/** The last output produced before the failure */
+	output: string;
+}
+
+/**
+ * The decision an OnFail handler returns — what to do after a gate fails.
+ *
+ * - `retry`            — re-run the step/scope immediately
+ * - `retryWithDelay`   — re-run after `delayMs` milliseconds
+ * - `skip`             — mark as skipped and continue with empty output
+ * - `warn`             — log a warning but treat as passed and continue
+ * - `fallback`         — run an alternative Step instead
+ */
+export type OnFailResult =
 	| { action: "retry"; max?: number }
+	| { action: "retryWithDelay"; max?: number; delayMs: number }
 	| { action: "skip" }
-	| { action: "fallback"; step: Step }
-	| { action: "retryWithDelay"; max?: number; delayMs: number } // retry with backoff
-	| { action: "warn" }; // log warning but pass through
+	| { action: "warn" }
+	| { action: "fallback"; step: Step };
+
+/**
+ * Failure handling strategy — a plain function that receives failure context
+ * and returns what to do next. Mirrors the Gate function signature style:
+ * simple cases are one-liners; complex strategies have full programmatic control.
+ *
+ * @example
+ * // Built-in presets
+ * onFail: retry(3)
+ * onFail: retryWithDelay(3, 2000)
+ * onFail: fallback(myStep)
+ * onFail: skip
+ * onFail: warn
+ *
+ * // Custom: retry twice, then warn
+ * onFail: ({ retryCount }) => retryCount < 2 ? { action: "retry" } : { action: "warn" }
+ */
+export type OnFail = (ctx: OnFailCtx) => OnFailResult | Promise<OnFailResult>;
 
 /** Data transform between steps */
 export type Transform =
@@ -97,6 +136,7 @@ export interface Sequential {
 	steps: Runnable[];
 	gate?: Gate; // validates final output of the sequence
 	onFail?: OnFail; // retry = re-run entire sequence from scratch
+	transform?: Transform; // applied to final output after gate passes
 }
 
 /** Pool — replicate ONE runnable N times with different inputs */
@@ -107,6 +147,7 @@ export interface Pool {
 	merge: { strategy: MergeStrategy };
 	gate?: Gate; // validates merged output
 	onFail?: OnFail; // retry = re-run all N branches + re-merge
+	transform?: Transform; // applied to merged output after gate passes
 }
 
 /** Parallel — run DIFFERENT runnables concurrently */
@@ -116,6 +157,7 @@ export interface Parallel {
 	merge: { strategy: MergeStrategy };
 	gate?: Gate; // validates merged output
 	onFail?: OnFail; // retry = re-run all branches + re-merge
+	transform?: Transform; // applied to merged output after gate passes
 }
 
 /** Union type — any composable unit */

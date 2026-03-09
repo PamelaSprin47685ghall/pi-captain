@@ -5,6 +5,7 @@
 
 import type { Api, Model } from "@mariozechner/pi-ai";
 import { complete } from "@mariozechner/pi-ai";
+import { deserializeRunnable } from "./deserialize.js";
 import type { Agent, Runnable } from "./types.js";
 
 // ── Gate & OnFail Catalogs ────────────────────────────────────────────────
@@ -63,11 +64,21 @@ const GATE_CATALOG = `
 
 const ONFAIL_CATALOG = `
 ## Available OnFail Strategies
-- { action: "retry", max: <N> }                 — Retry the step up to N times (default 3)
-- { action: "retryWithDelay", max: <N>, delayMs: <ms> } — Retry with delay between attempts
-- { action: "skip" }                             — Skip on failure, pass empty output downstream
-- { action: "warn" }                             — Log warning but pass output through (non-blocking)
-- { action: "fallback", step: <Step> }           — Run an alternative step on failure
+OnFail is a function (ctx) => OnFailResult. Use the presets below or write inline:
+
+Presets (imported from gates/on-fail):
+- retry(max?)                    — Retry the step up to max times (default 3)
+- retryWithDelay(max?, delayMs)  — Retry with delay between attempts
+- skip                           — Skip on failure, pass empty output downstream
+- warn                           — Log warning but pass output through (non-blocking)
+- fallback(step)                 — Run an alternative step on failure
+
+Custom inline (for JSON pipelines, use the serialized action form):
+- { action: "retry", max: <N> }
+- { action: "retryWithDelay", max: <N>, delayMs: <ms> }
+- { action: "skip" }
+- { action: "warn" }
+- { action: "fallback", step: <Step> }
 `;
 
 const RUNNABLE_SPEC = `
@@ -219,10 +230,13 @@ export function parseGeneratedPipeline(
 	// Validate runnable structure (basic recursive check)
 	validateRunnable(pipeline);
 
+	// Deserialize JSON gate/onFail objects into their function equivalents
+	const deserialized = deserializeRunnable(pipeline as unknown as Runnable);
+
 	return {
 		name: parsed.name as string,
 		description: (parsed.description as string) ?? "",
-		pipeline: pipeline as unknown as Runnable,
+		pipeline: deserialized,
 	};
 }
 
