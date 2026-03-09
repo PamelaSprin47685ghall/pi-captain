@@ -52,12 +52,12 @@ describe("gate: runGate", () => {
 		expect(result.reason).toBe("it was empty");
 	});
 
-	test("returns passed:false with reason when gate throws", async () => {
-		const result = await runGate(() => {
-			throw new Error("boom");
-		}, ctx());
-		expect(result.passed).toBe(false);
-		expect(result.reason).toBe("boom");
+	test("propagates throw — gate bugs are not silently swallowed", async () => {
+		await expect(
+			runGate(() => {
+				throw new Error("boom");
+			}, ctx()),
+		).rejects.toThrow("boom");
 	});
 });
 
@@ -82,13 +82,13 @@ describe("gate: command", () => {
 		expect(result.reason).toContain("something went wrong");
 	});
 
-	test("fails when exec throws", async () => {
+	test("propagates when exec throws — unexpected errors are not swallowed", async () => {
 		const exec = mock(async () => {
 			throw new Error("ENOENT");
 		});
-		const result = await runGate(command("bad-cmd"), ctx({ exec }));
-		expect(result.passed).toBe(false);
-		expect(result.reason).toContain("ENOENT");
+		await expect(runGate(command("bad-cmd"), ctx({ exec }))).rejects.toThrow(
+			"ENOENT",
+		);
 	});
 });
 
