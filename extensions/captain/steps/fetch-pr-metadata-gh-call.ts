@@ -4,7 +4,7 @@
 // GET /repos/{owner}/{repo}/pulls/{prNumber} and return raw PR JSON.
 // Throws a typed HttpError (with status code) on non-2xx responses.
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -40,7 +40,6 @@ export const fetchPrMetadataGhCall: Step = {
 	description:
 		"Call GET /repos/{owner}/{repo}/pulls/{prNumber} with Bearer token — return raw PR JSON or throw typed HttpError",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

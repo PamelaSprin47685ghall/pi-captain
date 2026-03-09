@@ -3,7 +3,7 @@
 // a final verdict (APPROVE / REQUEST_CHANGES / COMMENT), produce a structured
 // review summary, then post the full review to GitHub via the CLI.
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -49,7 +49,6 @@ export const synthesizePrVerdict: Step = {
 	temperature: 0,
 	description: `Aggregate all file findings → final verdict + reasoning, then post review to GitHub via CLI`,
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

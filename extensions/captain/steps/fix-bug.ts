@@ -1,7 +1,7 @@
 // ── Step: Fix Bug ─────────────────────────────────────────────────────────
 // Applies the proposed fix from the diagnosis step
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -26,7 +26,6 @@ export const fixBug: Step = {
 	tools: ["read", "bash", "edit", "write"],
 	description: "Apply the diagnosed fix to the codebase",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

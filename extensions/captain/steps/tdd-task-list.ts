@@ -3,7 +3,7 @@
 // to each BDD scenario. Expand each scenario into a list of unit-level test
 // scenarios → each maps to 1 failing test → 1 function → 1 commit.
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -52,7 +52,6 @@ export const tddTaskList: Step = {
 	description:
 		"Apply Kent Beck's Canon TDD task list: each BDD scenario → atomic unit tests → 1 function each",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

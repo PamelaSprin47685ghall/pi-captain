@@ -1,6 +1,25 @@
 import { describe, expect, mock, test } from "bun:test";
-import { evaluateGate } from "./gates.js";
-import type { Gate } from "./types.js";
+import {
+	allOf,
+	anyOf,
+	assert,
+	command,
+	dir,
+	envEquals,
+	envSet,
+	file,
+	jsonHasKeys,
+	jsonValid,
+	llmFast,
+	outputIncludesCI,
+	outputMinLength,
+	regex,
+	regexCI,
+	user,
+	withTimeout,
+} from "./gates/index.js";
+import { runGate } from "./gates.js";
+import type { GateCtx } from "./types.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -12,8 +31,9 @@ function makeExec(code = 0, stdout = "", stderr = "") {
 	}));
 }
 
-function baseCtx(overrides: Partial<Parameters<typeof evaluateGate>[2]> = {}) {
+function ctx(overrides: Partial<GateCtx> = {}): GateCtx {
 	return {
+		output: "",
 		exec: makeExec(),
 		hasUI: false,
 		cwd: "/tmp",
@@ -21,13 +41,25 @@ function baseCtx(overrides: Partial<Parameters<typeof evaluateGate>[2]> = {}) {
 	};
 }
 
-// ── none ──────────────────────────────────────────────────────────────────
+// ── runGate wrapper ───────────────────────────────────────────────────────
 
-describe("gate: none", () => {
-	test("always passes", async () => {
-		const result = await evaluateGate({ type: "none" }, "", baseCtx());
+describe("gate: runGate", () => {
+	test("returns passed:true when gate returns true", async () => {
+		const result = await runGate(() => true, ctx());
 		expect(result.passed).toBe(true);
-		expect(result.reason).toContain("No gate");
+	});
+
+	test("returns passed:false when gate returns false", async () => {
+		const result = await runGate(() => false, ctx());
+		expect(result.passed).toBe(false);
+	});
+
+	test("returns passed:false with reason when gate throws", async () => {
+		const result = await runGate(() => {
+			throw new Error("boom");
+		}, ctx());
+		expect(result.passed).toBe(false);
+		expect(result.reason).toContain("boom");
 	});
 });
 
@@ -35,74 +67,85 @@ describe("gate: none", () => {
 
 describe("gate: assert", () => {
 	test("output.includes passes when text present", async () => {
-		const gate: Gate = { type: "assert", fn: "output.includes('hello')" };
-		const result = await evaluateGate(gate, "hello world", baseCtx());
+		const result = await runGate(
+			assert("output.includes('hello')"),
+			ctx({ output: "hello world" }),
+		);
 		expect(result.passed).toBe(true);
 	});
 
 	test("output.includes fails when text absent", async () => {
-		const gate: Gate = { type: "assert", fn: "output.includes('missing')" };
-		const result = await evaluateGate(gate, "hello world", baseCtx());
+		const result = await runGate(
+			assert("output.includes('missing')"),
+			ctx({ output: "hello world" }),
+		);
 		expect(result.passed).toBe(false);
 		expect(result.reason).toContain("Assertion failed");
 	});
 
 	test("!output.includes passes when text absent", async () => {
-		const gate: Gate = { type: "assert", fn: "!output.includes('bad')" };
-		const result = await evaluateGate(gate, "all good", baseCtx());
+		const result = await runGate(
+			assert("!output.includes('bad')"),
+			ctx({ output: "all good" }),
+		);
 		expect(result.passed).toBe(true);
 	});
 
 	test("output.length > N passes", async () => {
-		const gate: Gate = { type: "assert", fn: "output.length > 5" };
-		const result = await evaluateGate(gate, "hello world", baseCtx());
+		const result = await runGate(
+			assert("output.length > 5"),
+			ctx({ output: "hello world" }),
+		);
 		expect(result.passed).toBe(true);
 	});
 
 	test("output.length > N fails", async () => {
-		const gate: Gate = { type: "assert", fn: "output.length > 100" };
-		const result = await evaluateGate(gate, "hi", baseCtx());
+		const result = await runGate(
+			assert("output.length > 100"),
+			ctx({ output: "hi" }),
+		);
 		expect(result.passed).toBe(false);
 	});
 
 	test("output.length === N passes", async () => {
-		const gate: Gate = { type: "assert", fn: "output.length === 5" };
-		const result = await evaluateGate(gate, "hello", baseCtx());
+		const result = await runGate(
+			assert("output.length === 5"),
+			ctx({ output: "hello" }),
+		);
 		expect(result.passed).toBe(true);
 	});
 
 	test("|| OR logic passes if one side matches", async () => {
-		const gate: Gate = {
-			type: "assert",
-			fn: "output.includes('a') || output.includes('b')",
-		};
-		const result = await evaluateGate(gate, "b wins", baseCtx());
+		const result = await runGate(
+			assert("output.includes('a') || output.includes('b')"),
+			ctx({ output: "b wins" }),
+		);
 		expect(result.passed).toBe(true);
 	});
 
 	test("&& AND logic fails if one side misses", async () => {
-		const gate: Gate = {
-			type: "assert",
-			fn: "output.includes('a') && output.includes('b')",
-		};
-		const result = await evaluateGate(gate, "only a here", baseCtx());
+		const result = await runGate(
+			assert("output.includes('a') && output.includes('b')"),
+			ctx({ output: "only a here" }),
+		);
 		expect(result.passed).toBe(false);
 	});
 
 	test("case-insensitive includes via toLowerCase()", async () => {
-		const gate: Gate = {
-			type: "assert",
-			fn: "output.toLowerCase().includes('hello')",
-		};
-		const result = await evaluateGate(gate, "HELLO WORLD", baseCtx());
+		const result = await runGate(
+			assert("output.toLowerCase().includes('hello')"),
+			ctx({ output: "HELLO WORLD" }),
+		);
 		expect(result.passed).toBe(true);
 	});
 
 	test("unsupported expression returns assertion error", async () => {
-		const gate: Gate = { type: "assert", fn: "Math.random() > 0" };
-		const result = await evaluateGate(gate, "x", baseCtx());
+		const result = await runGate(
+			assert("Math.random() > 0"),
+			ctx({ output: "x" }),
+		);
 		expect(result.passed).toBe(false);
-		expect(result.reason).toContain("Assertion error");
+		expect(result.reason).toContain("Gate error");
 	});
 });
 
@@ -110,26 +153,31 @@ describe("gate: assert", () => {
 
 describe("gate: regex", () => {
 	test("passes when pattern matches", async () => {
-		const gate: Gate = { type: "regex", pattern: "\\d+" };
-		const result = await evaluateGate(gate, "there are 42 items", baseCtx());
+		const result = await runGate(
+			regex("\\d+"),
+			ctx({ output: "there are 42 items" }),
+		);
 		expect(result.passed).toBe(true);
 	});
 
 	test("fails when pattern does not match", async () => {
-		const gate: Gate = { type: "regex", pattern: "^ERROR" };
-		const result = await evaluateGate(gate, "all good", baseCtx());
+		const result = await runGate(regex("^ERROR"), ctx({ output: "all good" }));
 		expect(result.passed).toBe(false);
 	});
 
 	test("respects flags (case-insensitive)", async () => {
-		const gate: Gate = { type: "regex", pattern: "hello", flags: "i" };
-		const result = await evaluateGate(gate, "HELLO WORLD", baseCtx());
+		const result = await runGate(
+			regexCI("hello"),
+			ctx({ output: "HELLO WORLD" }),
+		);
 		expect(result.passed).toBe(true);
 	});
 
 	test("invalid regex returns error", async () => {
-		const gate: Gate = { type: "regex", pattern: "[invalid" };
-		const result = await evaluateGate(gate, "anything", baseCtx());
+		const result = await runGate(
+			regex("[invalid"),
+			ctx({ output: "anything" }),
+		);
 		expect(result.passed).toBe(false);
 		expect(result.reason).toContain("Invalid regex");
 	});
@@ -139,31 +187,29 @@ describe("gate: regex", () => {
 
 describe("gate: json", () => {
 	test("passes for valid JSON without schema", async () => {
-		const gate: Gate = { type: "json" };
-		const result = await evaluateGate(gate, '{"a":1}', baseCtx());
+		const result = await runGate(jsonValid, ctx({ output: '{"a":1}' }));
 		expect(result.passed).toBe(true);
 	});
 
 	test("fails for invalid JSON", async () => {
-		const gate: Gate = { type: "json" };
-		const result = await evaluateGate(gate, "not json", baseCtx());
+		const result = await runGate(jsonValid, ctx({ output: "not json" }));
 		expect(result.passed).toBe(false);
 		expect(result.reason).toContain("not valid JSON");
 	});
 
 	test("passes when all schema keys present", async () => {
-		const gate: Gate = { type: "json", schema: "name, age" };
-		const result = await evaluateGate(
-			gate,
-			'{"name":"Alice","age":30}',
-			baseCtx(),
+		const result = await runGate(
+			jsonHasKeys("name", "age"),
+			ctx({ output: '{"name":"Alice","age":30}' }),
 		);
 		expect(result.passed).toBe(true);
 	});
 
 	test("fails when schema key missing", async () => {
-		const gate: Gate = { type: "json", schema: "name, email" };
-		const result = await evaluateGate(gate, '{"name":"Alice"}', baseCtx());
+		const result = await runGate(
+			jsonHasKeys("name", "email"),
+			ctx({ output: '{"name":"Alice"}' }),
+		);
 		expect(result.passed).toBe(false);
 		expect(result.reason).toContain("email");
 	});
@@ -174,16 +220,13 @@ describe("gate: json", () => {
 describe("gate: command", () => {
 	test("passes when command exits 0", async () => {
 		const exec = makeExec(0, "ok", "");
-		const gate: Gate = { type: "command", value: "exit 0" };
-		const result = await evaluateGate(gate, "", baseCtx({ exec }));
+		const result = await runGate(command("exit 0"), ctx({ exec }));
 		expect(result.passed).toBe(true);
-		expect(result.reason).toContain("Command passed");
 	});
 
 	test("fails when command exits non-zero", async () => {
 		const exec = makeExec(1, "", "something went wrong");
-		const gate: Gate = { type: "command", value: "exit 1" };
-		const result = await evaluateGate(gate, "", baseCtx({ exec }));
+		const result = await runGate(command("exit 1"), ctx({ exec }));
 		expect(result.passed).toBe(false);
 		expect(result.reason).toContain("Command failed");
 	});
@@ -192,10 +235,9 @@ describe("gate: command", () => {
 		const exec = mock(async () => {
 			throw new Error("ENOENT");
 		});
-		const gate: Gate = { type: "command", value: "bad-cmd" };
-		const result = await evaluateGate(gate, "", baseCtx({ exec }));
+		const result = await runGate(command("bad-cmd"), ctx({ exec }));
 		expect(result.passed).toBe(false);
-		expect(result.reason).toContain("Command error");
+		expect(result.reason).toContain("Gate error");
 	});
 });
 
@@ -204,16 +246,13 @@ describe("gate: command", () => {
 describe("gate: file", () => {
 	test("passes when exec returns code 0", async () => {
 		const exec = makeExec(0);
-		const gate: Gate = { type: "file", value: "/some/file.txt" };
-		const result = await evaluateGate(gate, "", baseCtx({ exec }));
+		const result = await runGate(file("/some/file.txt"), ctx({ exec }));
 		expect(result.passed).toBe(true);
-		expect(result.reason).toContain("File exists");
 	});
 
 	test("fails when exec returns non-zero", async () => {
 		const exec = makeExec(1);
-		const gate: Gate = { type: "file", value: "/missing.txt" };
-		const result = await evaluateGate(gate, "", baseCtx({ exec }));
+		const result = await runGate(file("/missing.txt"), ctx({ exec }));
 		expect(result.passed).toBe(false);
 		expect(result.reason).toContain("File not found");
 	});
@@ -224,16 +263,13 @@ describe("gate: file", () => {
 describe("gate: dir", () => {
 	test("passes when directory exists", async () => {
 		const exec = makeExec(0);
-		const gate: Gate = { type: "dir", value: "/some/dir" };
-		const result = await evaluateGate(gate, "", baseCtx({ exec }));
+		const result = await runGate(dir("/some/dir"), ctx({ exec }));
 		expect(result.passed).toBe(true);
-		expect(result.reason).toContain("Directory exists");
 	});
 
 	test("fails when directory missing", async () => {
 		const exec = makeExec(1);
-		const gate: Gate = { type: "dir", value: "/no/dir" };
-		const result = await evaluateGate(gate, "", baseCtx({ exec }));
+		const result = await runGate(dir("/no/dir"), ctx({ exec }));
 		expect(result.passed).toBe(false);
 		expect(result.reason).toContain("Directory not found");
 	});
@@ -244,26 +280,24 @@ describe("gate: dir", () => {
 describe("gate: env", () => {
 	test("passes when env var is set", async () => {
 		const exec = makeExec(0);
-		const gate: Gate = { type: "env", name: "MY_VAR" };
-		const result = await evaluateGate(gate, "", baseCtx({ exec }));
+		const result = await runGate(envSet("MY_VAR"), ctx({ exec }));
 		expect(result.passed).toBe(true);
-		expect(result.reason).toContain("MY_VAR");
 	});
 
 	test("fails when env var is not set", async () => {
 		const exec = makeExec(1);
-		const gate: Gate = { type: "env", name: "MISSING_VAR" };
-		const result = await evaluateGate(gate, "", baseCtx({ exec }));
+		const result = await runGate(envSet("MISSING_VAR"), ctx({ exec }));
 		expect(result.passed).toBe(false);
 		expect(result.reason).toContain("MISSING_VAR");
 	});
 
 	test("passes when env var matches expected value", async () => {
 		const exec = makeExec(0);
-		const gate: Gate = { type: "env", name: "NODE_ENV", value: "production" };
-		const result = await evaluateGate(gate, "", baseCtx({ exec }));
+		const result = await runGate(
+			envEquals("NODE_ENV", "production"),
+			ctx({ exec }),
+		);
 		expect(result.passed).toBe(true);
-		expect(result.reason).toContain("NODE_ENV");
 	});
 });
 
@@ -271,35 +305,25 @@ describe("gate: env", () => {
 
 describe("gate: user", () => {
 	test("fails when no UI available", async () => {
-		const gate: Gate = { type: "user" };
-		const result = await evaluateGate(
-			gate,
-			"output",
-			baseCtx({ hasUI: false }),
-		);
+		const result = await runGate(user, ctx({ hasUI: false }));
 		expect(result.passed).toBe(false);
 		expect(result.reason).toContain("requires interactive UI");
 	});
 
 	test("passes when user confirms", async () => {
-		const gate: Gate = { type: "user" };
 		const confirm = mock(async () => true);
-		const result = await evaluateGate(
-			gate,
-			"step output",
-			baseCtx({ hasUI: true, confirm }),
+		const result = await runGate(
+			user,
+			ctx({ hasUI: true, confirm, output: "step output" }),
 		);
 		expect(result.passed).toBe(true);
-		expect(result.reason).toContain("approved");
 	});
 
 	test("fails when user rejects", async () => {
-		const gate: Gate = { type: "user" };
 		const confirm = mock(async () => false);
-		const result = await evaluateGate(
-			gate,
-			"step output",
-			baseCtx({ hasUI: true, confirm }),
+		const result = await runGate(
+			user,
+			ctx({ hasUI: true, confirm, output: "step output" }),
 		);
 		expect(result.passed).toBe(false);
 		expect(result.reason).toContain("rejected");
@@ -310,58 +334,35 @@ describe("gate: user", () => {
 
 describe("gate: multi", () => {
 	test("all mode passes when all sub-gates pass", async () => {
-		const gate: Gate = {
-			type: "multi",
-			mode: "all",
-			gates: [
-				{ type: "assert", fn: "output.includes('a')" },
-				{ type: "assert", fn: "output.includes('b')" },
-			],
-		};
-		const result = await evaluateGate(gate, "a and b", baseCtx());
+		const result = await runGate(
+			allOf(outputIncludesCI("a"), outputIncludesCI("b")),
+			ctx({ output: "a and b" }),
+		);
 		expect(result.passed).toBe(true);
-		expect(result.reason).toContain("All 2 gates passed");
 	});
 
 	test("all mode fails when one sub-gate fails", async () => {
-		const gate: Gate = {
-			type: "multi",
-			mode: "all",
-			gates: [
-				{ type: "assert", fn: "output.includes('a')" },
-				{ type: "assert", fn: "output.includes('missing')" },
-			],
-		};
-		const result = await evaluateGate(gate, "only a", baseCtx());
+		const result = await runGate(
+			allOf(outputIncludesCI("a"), outputIncludesCI("missing")),
+			ctx({ output: "only a" }),
+		);
 		expect(result.passed).toBe(false);
-		expect(result.reason).toContain("1/2 gates failed");
 	});
 
 	test("any mode passes when one sub-gate passes", async () => {
-		const gate: Gate = {
-			type: "multi",
-			mode: "any",
-			gates: [
-				{ type: "assert", fn: "output.includes('missing')" },
-				{ type: "assert", fn: "output.includes('b')" },
-			],
-		};
-		const result = await evaluateGate(gate, "only b here", baseCtx());
+		const result = await runGate(
+			anyOf(outputIncludesCI("missing"), outputIncludesCI("b")),
+			ctx({ output: "only b here" }),
+		);
 		expect(result.passed).toBe(true);
 	});
 
 	test("any mode fails when all sub-gates fail", async () => {
-		const gate: Gate = {
-			type: "multi",
-			mode: "any",
-			gates: [
-				{ type: "assert", fn: "output.includes('x')" },
-				{ type: "assert", fn: "output.includes('y')" },
-			],
-		};
-		const result = await evaluateGate(gate, "nothing matches", baseCtx());
+		const result = await runGate(
+			anyOf(outputIncludesCI("x"), outputIncludesCI("y")),
+			ctx({ output: "nothing matches" }),
+		);
 		expect(result.passed).toBe(false);
-		expect(result.reason).toContain("All 2 gates failed");
 	});
 });
 
@@ -369,12 +370,10 @@ describe("gate: multi", () => {
 
 describe("gate: timeout", () => {
 	test("passes when inner gate resolves before timeout", async () => {
-		const gate: Gate = {
-			type: "timeout",
-			ms: 1000,
-			gate: { type: "assert", fn: "output.includes('ok')" },
-		};
-		const result = await evaluateGate(gate, "ok", baseCtx());
+		const result = await runGate(
+			withTimeout(outputIncludesCI("ok"), 1000),
+			ctx({ output: "ok" }),
+		);
 		expect(result.passed).toBe(true);
 	});
 
@@ -386,12 +385,10 @@ describe("gate: timeout", () => {
 						setTimeout(() => resolve({ code: 0, stdout: "", stderr: "" }), 200),
 				),
 		);
-		const gate: Gate = {
-			type: "timeout",
-			ms: 10,
-			gate: { type: "command", value: "sleep 1" },
-		};
-		const result = await evaluateGate(gate, "", baseCtx({ exec: slowExec }));
+		const result = await runGate(
+			withTimeout(command("sleep 1"), 10),
+			ctx({ exec: slowExec }),
+		);
 		expect(result.passed).toBe(false);
 		expect(result.reason).toContain("timed out");
 	});
@@ -401,12 +398,28 @@ describe("gate: timeout", () => {
 
 describe("gate: llm", () => {
 	test("fails when model/apiKey not provided in context", async () => {
-		const gate: Gate = {
-			type: "llm",
-			prompt: "Does this look good?",
-		};
-		const result = await evaluateGate(gate, "some output", baseCtx());
+		const result = await runGate(
+			llmFast("Does this look good?"),
+			ctx({ output: "some output" }),
+		);
 		expect(result.passed).toBe(false);
 		expect(result.reason).toContain("requires model and apiKey");
+	});
+});
+
+// ── outputMinLength ───────────────────────────────────────────────────────
+
+describe("gate: outputMinLength", () => {
+	test("passes when output exceeds minimum length", async () => {
+		const result = await runGate(
+			outputMinLength(5),
+			ctx({ output: "hello world" }),
+		);
+		expect(result.passed).toBe(true);
+	});
+
+	test("fails when output is too short", async () => {
+		const result = await runGate(outputMinLength(100), ctx({ output: "hi" }));
+		expect(result.passed).toBe(false);
 	});
 });

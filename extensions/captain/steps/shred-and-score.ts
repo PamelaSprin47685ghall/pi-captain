@@ -2,7 +2,7 @@
 // Stage 3 of shredder: Score each unit's complexity on three axes and
 // re-split any unit above the Haiku-safe threshold (composite ≤ 2).
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -53,7 +53,6 @@ export const shredAndScore: Step = {
 	description:
 		"Score complexity and re-split any unit above the Haiku-safe threshold",
 	prompt,
-	gate: none,
 	onFail: retry(3),
 	transform: { kind: "full" },
 };

@@ -3,7 +3,7 @@
 // acceptance scenarios. Each Given/When/Then = 1 atomic acceptance test.
 // The ">6 criteria = split the story" heuristic is enforced.
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -51,7 +51,6 @@ export const bddScenarios: Step = {
 	description:
 		"Distill user stories into Given/When/Then acceptance scenarios (ATDD outer loop)",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

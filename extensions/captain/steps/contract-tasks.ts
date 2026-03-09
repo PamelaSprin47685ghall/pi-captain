@@ -7,7 +7,7 @@
 // Output is UNIT-N compatible so shredder's shredAndScore, resolveDependencies,
 // generateExecutionSpec, and renderCanvas all work unchanged downstream.
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -87,7 +87,6 @@ export const contractTasks: Step = {
 	description:
 		"Convert BDD scenarios into typed AI execution contracts (prompt-as-contract pattern, UNIT-N format)",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

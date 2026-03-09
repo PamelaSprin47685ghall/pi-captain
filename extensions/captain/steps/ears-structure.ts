@@ -3,7 +3,7 @@
 // (Easy Approach to Requirements Syntax) statements that are individually
 // testable: "While [precondition], when [trigger], the [system] shall [response]."
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -51,7 +51,6 @@ export const earsStructure: Step = {
 	description:
 		"Transform raw requirement into testable EARS-structured statements",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

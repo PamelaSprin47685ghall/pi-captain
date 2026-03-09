@@ -1,23 +1,15 @@
-// ── Reusable Gate & OnFail Factories ──────────────────────────────────────
-// Import these into any pipeline step or composition node.
-// Factory functions let you parameterize gates like function calls.
+// ── Gate & OnFail Exports ──────────────────────────────────────────────────
+// Gates are plain functions: (ctx: GateCtx) => boolean | Promise<boolean>
+// Throw to fail with a descriptive message; return true to pass.
 
+export type { GateResult } from "../gates.js";
+
+// Gate runner (used by executor)
+export { runGate } from "../gates.js";
 // OnFail strategies
 export { fallback, retry, retryWithDelay, skip, warn } from "./on-fail.js";
-// Atomic gates
-// String/content assertion gates
-// Regex gates
-// JSON validation gates
-// HTTP / service gates
-// Combinator gates (AND/OR)
-// Environment gates
-// Timeout wrapper
-// Test runner presets
-// Build artifact gates
-// Chained command gates
-// Git gates
-// Composite presets
-// LLM evaluation gates
+
+// Gate factories & presets
 export {
 	allOf,
 	anyOf,
@@ -49,7 +41,6 @@ export {
 	llmStrict,
 	noConflicts,
 	nodeModulesExists,
-	none,
 	outputIncludes,
 	outputIncludesCI,
 	outputMinLength,

@@ -2,7 +2,7 @@
 // Stage 2 of shredder: Recursively split a structured spec into atomic,
 // self-contained, testable sub-tasks with dependency tracking.
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -46,7 +46,6 @@ export const decompose: Step = {
 	temperature: 0.2,
 	description: "Recursively split the spec into atomic sub-tasks",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

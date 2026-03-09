@@ -18,7 +18,7 @@ import {
 	SettingsManager,
 	type Tool,
 } from "@mariozechner/pi-coding-agent";
-import { evaluateGate, type GateResult } from "./gates.js";
+import { type GateResult, runGate } from "./gates.js";
 import { mergeOutputs } from "./merge.js";
 import type {
 	Gate,
@@ -229,7 +229,8 @@ async function runStepCore(
 
 	output = output.trim();
 
-	const gateResult = await evaluateGate(step.gate, output, {
+	const gateCtx = {
+		output,
 		exec: ectx.exec,
 		confirm: ectx.confirm,
 		hasUI: ectx.hasUI,
@@ -238,7 +239,11 @@ async function runStepCore(
 		model: ectx.model,
 		apiKey: ectx.apiKey,
 		modelRegistry: ectx.modelRegistry,
-	});
+	};
+
+	const gateResult = step.gate
+		? await runGate(step.gate, gateCtx)
+		: { passed: true, reason: "No gate" };
 
 	if (!gateResult.passed) {
 		const failResult = await handleFailure(
@@ -311,9 +316,10 @@ async function gateCheck(
 	ectx: ExecutorContext,
 	retryCount: number,
 ): Promise<{ output: string; results: StepResult[] }> {
-	if (!gate || gate.type === "none") return { output, results };
+	if (!gate) return { output, results };
 
-	const gateResult = await evaluateGate(gate, output, {
+	const gateResult = await runGate(gate, {
+		output,
 		exec: ectx.exec,
 		confirm: ectx.confirm,
 		hasUI: ectx.hasUI,

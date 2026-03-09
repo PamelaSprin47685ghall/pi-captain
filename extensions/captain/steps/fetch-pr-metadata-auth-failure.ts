@@ -4,7 +4,7 @@
 // before any GitHub API call is attempted — no silent fallthrough to an
 // HTTP 401, no generic error type.
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -41,7 +41,6 @@ export const fetchPrMetadataAuthFailure: Step = {
 	description:
 		"Assert that missing/empty GITHUB_TOKEN throws AuthError before any API call is made",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

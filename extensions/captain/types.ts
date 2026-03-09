@@ -1,22 +1,38 @@
 // ── Captain: Pipeline Orchestration Types ──────────────────────────────────
 
-/** Gate — validation check after each step */
-export type Gate =
-	| { type: "command"; value: string } // shell command; exit 0 = pass
-	| { type: "user"; value: true } // human approval via ctx.ui.confirm
-	| { type: "file"; value: string } // file existence check
-	| { type: "assert"; fn: string } // JS expression evaluated against output
-	| { type: "none" } // no gate (always passes)
-	// ── Extended Gate Types ──────────────────────────────────────────────────
-	| { type: "regex"; pattern: string; flags?: string } // output must match regex
-	| { type: "json"; schema?: string } // output must be valid JSON, optionally matching a shape
-	| { type: "http"; url: string; method?: string; expectedStatus?: number } // HTTP health check
-	| { type: "multi"; mode: "all" | "any"; gates: Gate[] } // combine gates with AND/OR logic
-	| { type: "dir"; value: string } // directory existence check
-	| { type: "env"; name: string; value?: string } // environment variable check
-	| { type: "timeout"; gate: Gate; ms: number } // wrap any gate with a timeout
-	// ── LLM Gate ─────────────────────────────────────────────────────────────
-	| { type: "llm"; prompt: string; model?: string; threshold?: number }; // LLM-evaluated gate with confidence threshold
+/**
+ * Context passed to every gate function.
+ * Gates receive the step output plus execution helpers (shell, UI, LLM).
+ */
+export interface GateCtx {
+	/** The step's output text to validate */
+	output: string;
+	/** Working directory for shell commands */
+	cwd: string;
+	signal?: AbortSignal;
+	/** Run a shell command — resolves with exit code + stdout/stderr */
+	exec: (
+		cmd: string,
+		args: string[],
+		opts?: { signal?: AbortSignal },
+	) => Promise<{ stdout: string; stderr: string; code: number }>;
+	/** Show a confirm dialog (only available in interactive sessions) */
+	confirm?: (title: string, body: string) => Promise<boolean>;
+	hasUI: boolean;
+	/** Current LLM model (used by llm/llmFast/llmStrict gates) */
+	// biome-ignore lint/suspicious/noExplicitAny: model type varies by provider
+	model?: any;
+	apiKey?: string;
+	// biome-ignore lint/suspicious/noExplicitAny: registry type lives in executor
+	modelRegistry?: any;
+}
+
+/**
+ * A gate is a plain function: receives context (including step output) and
+ * returns true to pass or false to fail.  Any async operation is allowed.
+ * Throw to fail with a descriptive error message.
+ */
+export type Gate = (ctx: GateCtx) => boolean | Promise<boolean>;
 
 /** Failure handling strategy */
 export type OnFail =
@@ -70,8 +86,8 @@ export interface Step {
 	// maxTurns / maxTokens were removed — they were declared but never enforced,
 	// which was misleading to users. Add back when the SDK supports them natively.
 
-	gate: Gate;
-	onFail: OnFail;
+	gate?: Gate;
+	onFail?: OnFail;
 	transform: Transform;
 }
 

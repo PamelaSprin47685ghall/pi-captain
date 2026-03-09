@@ -3,7 +3,7 @@
 // Verifies parsePrInput correctly rejects: single-segment strings, non-numeric
 // PR numbers, zero PR numbers, two-part strings missing the '#', and empty strings.
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -56,7 +56,6 @@ export const validatePrInput: Step = {
 	description:
 		"Run all 5 rejection-path tests for parsePrInput: single-segment, non-numeric PR, zero PR, missing '#', and empty string",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

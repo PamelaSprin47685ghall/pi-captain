@@ -1,7 +1,6 @@
 // ── Step: Research ────────────────────────────────────────────────────────
 // Deep dive into a topic, listing key findings and considerations
 
-import { none, skip } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -17,7 +16,5 @@ export const research: Step = {
 	tools: ["read", "bash"],
 	description: "Deep dive into the topic",
 	prompt,
-	gate: none,
-	onFail: skip,
 	transform: { kind: "full" },
 };

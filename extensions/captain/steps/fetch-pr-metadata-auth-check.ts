@@ -4,7 +4,7 @@
 // is present in the environment. Returns the token for use by the API-call,
 // retry-loop, and auth-failure-path steps downstream.
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -36,7 +36,6 @@ export const fetchPrMetadataAuthCheck: Step = {
 	description:
 		"Read GITHUB_TOKEN from the environment and throw a typed AuthError if absent or empty",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

@@ -4,7 +4,7 @@
 // code quality, style, and suggests inline comments. Run in a pool so
 // all files are reviewed in parallel — results merged via concat.
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -46,7 +46,6 @@ export const reviewPrFile: Step = {
 	description:
 		"Review a single changed file for correctness, security, quality — emit inline comments",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

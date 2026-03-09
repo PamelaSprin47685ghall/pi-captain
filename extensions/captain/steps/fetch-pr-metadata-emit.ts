@@ -4,7 +4,7 @@
 // typed PrMetadata object. Validates required fields — throws a ParseError
 // if critical fields are absent.
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -60,7 +60,6 @@ export const fetchPrMetadataEmit: Step = {
 	description:
 		"Map raw GitHub API JSON to a typed PrMetadata object — validate required fields, throw ParseError on missing data",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

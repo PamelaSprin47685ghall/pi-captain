@@ -2,7 +2,7 @@
 // Stage 1 of github-pr-review: parse a canonical 'owner/repo#number' string
 // into its three components so every downstream step has clean references.
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -37,7 +37,6 @@ export const parsePrInput: Step = {
 	tools: ["read", "bash", "edit", "write"],
 	description: "Parse 'owner/repo#N' into owner, repo, and PR number",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

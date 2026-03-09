@@ -3,7 +3,7 @@
 // a clean, printable BACKLOG.md — from requirement → EARS → stories → BDD
 // scenarios → TDD task list. The living decomposition artifact.
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -72,7 +72,6 @@ export const formatBacklog: Step = {
 	description:
 		"Synthesize full hierarchy into a BACKLOG.md living decomposition artifact",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

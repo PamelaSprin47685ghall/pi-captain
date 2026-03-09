@@ -2,7 +2,7 @@
 // Fallback step for validation: re-splits units that failed the single-pass
 // dry-run into smaller sub-units until all are Haiku-safe.
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -42,7 +42,6 @@ export const reShred: Step = {
 	description:
 		"Extract failed unit names from validation output and re-decompose them into smaller units",
 	prompt,
-	gate: none,
 	onFail: retry(1),
 	transform: { kind: "full" },
 };

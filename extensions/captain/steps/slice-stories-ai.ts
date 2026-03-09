@@ -3,7 +3,7 @@
 // Extends slice-stories with an upfront codebase scan so every story is
 // grounded in real file paths, existing types, and modules.
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -67,7 +67,6 @@ export const sliceStoriesAi: Step = {
 	description:
 		"Codebase-aware vertical story slicing: EARS reqs → INVEST stories with file area mapping",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

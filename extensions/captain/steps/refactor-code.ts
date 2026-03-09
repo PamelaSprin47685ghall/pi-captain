@@ -1,7 +1,7 @@
 // ── Step: Refactor Code ───────────────────────────────────────────────────
 // Applies the refactoring plan while preserving existing behavior
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -27,7 +27,6 @@ export const refactorCode: Step = {
 	tools: ["read", "bash", "edit", "write"],
 	description: "Apply refactoring changes based on the analysis plan",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

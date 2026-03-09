@@ -3,7 +3,7 @@
 // their diffs from the GitHub REST API, then emit a structured file list
 // with per-file stats (additions, deletions, patch content).
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -40,7 +40,6 @@ export const fetchPrFiles: Step = {
 	description:
 		"Fetch all changed files and diffs via GitHub CLI — emit structured file list for parallel review",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

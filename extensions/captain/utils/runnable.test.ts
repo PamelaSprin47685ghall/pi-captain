@@ -15,8 +15,6 @@ const step = (label: string): Step => ({
 	kind: "step",
 	label,
 	prompt: "do something",
-	gate: { type: "none" },
-	onFail: { action: "skip" },
 	transform: { kind: "full" },
 });
 
@@ -155,20 +153,20 @@ describe("containerGateInfo", () => {
 	});
 
 	test("gate without onFail shows onFail: none", () => {
-		const result = containerGateInfo(
-			{ type: "command", value: "exit 0" },
-			undefined,
-		);
-		expect(result).toContain("gate: command");
+		function myCommandGate() {
+			return true;
+		}
+		const result = containerGateInfo(myCommandGate, undefined);
+		expect(result).toContain("gate: myCommandGate");
 		expect(result).toContain("onFail: none");
 	});
 
 	test("gate with onFail shows both", () => {
-		const result = containerGateInfo(
-			{ type: "llm", prompt: "check quality" },
-			{ action: "retry", max: 3 },
-		);
-		expect(result).toContain("gate: llm");
+		function myLlmGate() {
+			return true;
+		}
+		const result = containerGateInfo(myLlmGate, { action: "retry", max: 3 });
+		expect(result).toContain("gate: myLlmGate");
 		expect(result).toContain("onFail: retry");
 	});
 });
@@ -181,8 +179,7 @@ describe("describeRunnable", () => {
 		const desc = describeRunnable(r, 0);
 		expect(desc).toContain("[step]");
 		expect(desc).toContain("my-step");
-		expect(desc).toContain("gate: none");
-		expect(desc).toContain("onFail: skip");
+		// no gate or onFail on this step — they're optional now
 	});
 
 	test("step shows model and tools", () => {

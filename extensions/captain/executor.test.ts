@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ExecutorContext } from "./executor.js";
+import { outputIncludes } from "./gates/index.js";
 import type { Parallel, Pool, Sequential, Step } from "./types.js";
 
 // ── Shared mutable session config ──────────────────────────────────────────
@@ -75,7 +76,6 @@ function makeStep(label: string, prompt = "do $INPUT"): Step {
 		kind: "step",
 		label,
 		prompt,
-		gate: { type: "none" },
 		onFail: { action: "skip" },
 		transform: { kind: "full" },
 	};
@@ -153,7 +153,7 @@ describe("executeRunnable: step", () => {
 		resetSessionCfg("output without keyword");
 		const step: Step = {
 			...makeStep("gated"),
-			gate: { type: "assert", fn: "output.includes('REQUIRED')" },
+			gate: outputIncludes("REQUIRED"),
 			onFail: { action: "skip" },
 		};
 		const { output, results } = await executeRunnable(step, "", "", makeCtx());
@@ -165,7 +165,7 @@ describe("executeRunnable: step", () => {
 		resetSessionCfg("output without keyword");
 		const step: Step = {
 			...makeStep("warned"),
-			gate: { type: "assert", fn: "output.includes('REQUIRED')" },
+			gate: outputIncludes("REQUIRED"),
 			onFail: { action: "warn" },
 		};
 		const { output, results } = await executeRunnable(step, "", "", makeCtx());
@@ -427,7 +427,7 @@ describe("executeRunnable: sequential", () => {
 		const seq: Sequential = {
 			kind: "sequential",
 			steps: [makeStep("a")],
-			gate: { type: "assert", fn: "output.includes('REQUIRED')" },
+			gate: outputIncludes("REQUIRED"),
 			onFail: { action: "skip" },
 		};
 
@@ -475,7 +475,7 @@ describe("executeRunnable: sequential", () => {
 		const seq: Sequential = {
 			kind: "sequential",
 			steps: [makeStep("a")],
-			gate: { type: "assert", fn: "output.includes('REQUIRED')" },
+			gate: outputIncludes("REQUIRED"),
 			onFail: { action: "warn" },
 		};
 

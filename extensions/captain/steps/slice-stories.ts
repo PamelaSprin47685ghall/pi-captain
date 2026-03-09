@@ -3,7 +3,7 @@
 // independently shippable user stories using business rule splitting and
 // SPIDR patterns. Each story cuts through all layers (no horizontal slices).
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -60,7 +60,6 @@ export const sliceStories: Step = {
 	description:
 		"Vertically slice EARS requirements into thin user stories using business rules + SPIDR",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

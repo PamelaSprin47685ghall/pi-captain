@@ -2,7 +2,7 @@
 // Stage 1 of shredder: Transform a raw requirement into a structured,
 // unambiguous specification with inputs, outputs, acceptance criteria.
 
-import { none, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -46,7 +46,6 @@ export const captureAndClarify: Step = {
 	temperature: 0.3,
 	description: "Transform raw requirement into a structured spec",
 	prompt,
-	gate: none,
 	onFail: retry(2),
 	transform: { kind: "full" },
 };
