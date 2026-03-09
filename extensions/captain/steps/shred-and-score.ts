@@ -28,7 +28,10 @@ export const shredAndScore: Step = {
 		"When splitting a unit, update dependency references: units that depended on the\n" +
 		"split unit should depend on its children instead.\n" +
 		"Repeat until every unit passes.\n\n" +
-		"Output only the final passing units with their scores and dependencies.\n" +
+		"Output each unit in full — preserve ALL original contract fields (Goal, Traceability,\n" +
+		"Function, File, Layer, Input schema, Output shape, Constraints, Pre-written test,\n" +
+		"Verification, Acceptance Test, Dependencies) and append the score fields below them.\n" +
+		"Do NOT strip any contract fields. Only the complexity scores and re-splits are new.\n" +
 		"End with:\n" +
 		"SHRUNKEN UNITS READY: count\n" +
 		"ALL PASS: YES\n\n" +

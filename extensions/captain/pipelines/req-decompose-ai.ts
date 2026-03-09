@@ -23,9 +23,11 @@
 //   4. CONTRACT     → decomposer: BDD scenarios → typed UNIT-N execution contracts
 //                     (prompt-as-contract: input schema + constraints + output shape
 //                      + pre-written test + verification command)
-//   5. SCORE        → shrinker: Haiku-safe complexity scoring, re-split until composite ≤ 2
-//   6. VALIDATE     → validator: machine-verifiability gate (typed? explicit file?
+//   5. VALIDATE     → validator: machine-verifiability gate (typed? explicit file?
 //                     pre-written test? runnable command?) fallback → re-contract failing units
+//                     (must run BEFORE score so full contract fields are present)
+//   6. SCORE        → shrinker: Haiku-safe complexity scoring, re-split until composite ≤ 2
+//                     (preserves all contract fields; only adds score lines + re-splits)
 //   7. RESOLVE      → resolver: adjacency graph → topological sort → parallel layers
 //   8. EXEC SPEC    → resolver: layered units → captain pipeline JSON (execution-spec.json)
 //   9. CANVAS       → canvas-renderer: visual backlog.canvas for Obsidian
@@ -83,8 +85,8 @@ export const pipeline: Runnable = {
 		slicePool, //  2️⃣  SLICE     — new: codebase-aware stories, pool ×3 ranked
 		bddScenarios, //  3️⃣  BDD       — req-decompose: Given/When/Then (reused)
 		contractTasks, //  4️⃣  CONTRACT  — new: typed contracts, prompt-as-contract pattern
-		shredAndScore, //  5️⃣  SCORE     — shredder: Haiku-safe complexity (reused)
-		validateContracts, //  6️⃣  VALIDATE  — new: machine-verifiability gate
+		validateContracts, //  5️⃣  VALIDATE  — new: machine-verifiability gate (before scoring)
+		shredAndScore, //  6️⃣  SCORE     — shredder: Haiku-safe complexity (reused)
 		resolveDependencies, //  7️⃣  RESOLVE   — shredder: topo sort → parallel layers (reused)
 		generateExecutionSpec, //  8️⃣  EXEC SPEC — shredder: captain pipeline JSON (reused)
 		renderCanvas, //  9️⃣  CANVAS    — shredder: Obsidian backlog.canvas (reused)
