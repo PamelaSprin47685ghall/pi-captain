@@ -9,7 +9,9 @@ import type { Step } from "../types.js";
 export const synthesizeRequirements: Step = {
 	kind: "step",
 	label: "Synthesize Requirements",
-	agent: "req-synthesizer",
+	tools: ["read", "bash", "write"],
+	model: "flash",
+	temperature: 0.3,
 	description:
 		"Produce the final comprehensive requirements document from all gathered intelligence",
 	prompt:

@@ -8,7 +8,9 @@ import type { Step } from "../types.js";
 export const resolveDependencies: Step = {
 	kind: "step",
 	label: "Resolve Dependencies",
-	agent: "resolver",
+	tools: ["read", "bash"],
+	model: "flash",
+	temperature: 0,
 	description:
 		"Build adjacency graph, detect cycles, topological sort into parallelizable execution layers",
 	prompt:

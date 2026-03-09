@@ -50,22 +50,17 @@ function parseInlineFlags(input: string): {
 /** Build a Step spec from parsed /captain-step flags */
 function buildAdHocStep(prompt: string, flags: Record<string, string>): Step {
 	const label = flags.label ?? "ad-hoc step";
-	const agentName = flags.agent;
 	const modelId = flags.model;
 	const toolsList = flags.tools?.split(",").map((t) => t.trim());
 	return {
 		kind: "step",
 		label,
 		prompt,
+		model: modelId,
+		tools: toolsList ?? ["read", "bash", "edit", "write"],
 		gate: { type: "none" },
 		onFail: { action: "skip" },
 		transform: { kind: "full" },
-		...(agentName
-			? { agent: agentName }
-			: {
-					model: modelId,
-					tools: toolsList ?? ["read", "bash", "edit", "write"],
-				}),
 	};
 }
 
@@ -159,7 +154,7 @@ async function parseCaptainRunArgs(
 async function buildEctx(
 	pi: ExtensionAPI,
 	ctx: ExtensionCommandContext,
-	state: CaptainState,
+	_state: CaptainState,
 	stateName: string,
 	pipelineState: PipelineState,
 ): Promise<ExecutorContext | undefined> {
@@ -173,10 +168,8 @@ async function buildEctx(
 		ctx.ui.notify("No API key available for the current model.", "error");
 		return undefined;
 	}
-	state.loadMdAgents(ctx.cwd);
 	return {
 		exec: (cmd, execArgs, opts) => pi.exec(cmd, execArgs, opts),
-		agents: state.agents,
 		model,
 		modelRegistry: ctx.modelRegistry,
 		apiKey,
@@ -312,24 +305,6 @@ export function registerCommands(pi: ExtensionAPI, state: CaptainState) {
 	});
 
 	// /captain-agents — list all available agents
-	pi.registerCommand("captain-agents", {
-		description:
-			"List all available agents (from .md files and runtime definitions)",
-		handler: async (_args, ctx) => {
-			const names = Object.keys(state.agents);
-			if (names.length === 0) {
-				ctx.ui.notify("No agents available.", "info");
-				return;
-			}
-			const lines = names.map((n) => {
-				const a = state.agents[n];
-				const src = a.source === "md" ? "📄 md" : "⚡ runtime";
-				return `• ${n} [${src}] — ${a.description} (tools: ${a.tools.join(", ")})`;
-			});
-			ctx.ui.notify(`Agents (${names.length}):\n${lines.join("\n")}`, "info");
-		},
-	});
-
 	// /captain-run — run a pipeline or single step
 	pi.registerCommand("captain-run", {
 		description:
@@ -417,7 +392,7 @@ export function registerCommands(pi: ExtensionAPI, state: CaptainState) {
 					result = state.loadPipelineFile(projectFile);
 				}
 				ctx.ui.notify(
-					`✓ Loaded "${result.name}" (${result.agentCount} agents)\nRun with: /captain-run ${result.name} <input>`,
+					`✓ Loaded "${result.name}"\nRun with: /captain-run ${result.name} <input>`,
 					"info",
 				);
 			} catch (err) {
@@ -451,9 +426,9 @@ export function registerCommands(pi: ExtensionAPI, state: CaptainState) {
 	// /captain-step — run a single ad-hoc step
 	pi.registerCommand("captain-step", {
 		description:
-			"Run a single ad-hoc step inline: /captain-step <prompt> [--agent <name>] [--model <id>] [--tools <t1,t2>] [--label <label>]",
+			"Run a single ad-hoc step inline: /captain-step <prompt> [--model <id>] [--tools <t1,t2>] [--label <label>]",
 		getArgumentCompletions: (prefix) => {
-			const flags = ["--agent ", "--model ", "--tools ", "--label "];
+			const flags = ["--model ", "--tools ", "--label "];
 			return flags
 				.filter((f) => f.startsWith(prefix))
 				.map((f) => ({ value: f, label: f.trim() }));
@@ -466,7 +441,6 @@ export function registerCommands(pi: ExtensionAPI, state: CaptainState) {
 						"Usage: /captain-step <prompt> [options]",
 						"",
 						"Options:",
-						"  --agent <name>     Use a named agent (overrides --model/--tools)",
 						"  --model <id>       Model to use (default: current model)",
 						"  --tools <t1,t2>    Comma-separated tools (default: read,bash,edit,write)",
 						"  --label <text>     Step label shown in UI (default: 'ad-hoc step')",
@@ -508,10 +482,9 @@ export function registerCommands(pi: ExtensionAPI, state: CaptainState) {
 		description: "Show all captain commands and usage",
 		handler: async (_args, ctx) => {
 			const pipelineCount = Object.keys(state.pipelines).length;
-			const agentCount = Object.keys(state.agents).length;
 			ctx.ui.notify(
 				[
-					`Captain — Multi-agent Pipeline Orchestrator  (${pipelineCount} pipeline(s), ${agentCount} agent(s))`,
+					`Captain — Pipeline Orchestrator  (${pipelineCount} pipeline(s))`,
 					"",
 					"── Pipeline Commands ─────────────────────────────────────────",
 					"  /captain                     List all loaded pipelines",
@@ -524,14 +497,12 @@ export function registerCommands(pi: ExtensionAPI, state: CaptainState) {
 					"",
 					"── Ad-hoc Step ───────────────────────────────────────────────",
 					"  /captain-step <prompt>                    Run with default tools",
-					"  /captain-step <prompt> --agent <name>     Run with a named agent",
 					"  /captain-step <prompt> --model <id>       Override model",
 					"  /captain-step <prompt> --tools <t1,t2>    Override tools",
 					"  /captain-step <prompt> --label <text>     Set display label",
 					"",
-					"── Generation & Agents ───────────────────────────────────────",
+					"── Generation ────────────────────────────────────────────────",
 					"  /captain-generate <goal>     Generate a pipeline with LLM",
-					"  /captain-agents              List all available agents",
 					"",
 					"── Tips ──────────────────────────────────────────────────────",
 					"  • /captain-run auto-loads presets — no need to /captain-load first",

@@ -8,7 +8,9 @@ import type { Step } from "../types.js";
 export const reShred: Step = {
 	kind: "step",
 	label: "Re-Shred Failed Units",
-	agent: "shrinker",
+	tools: ["read", "bash"],
+	model: "sonnet",
+	temperature: 0.1,
 	description:
 		"Extract failed unit names from validation output and re-decompose them into smaller units",
 	prompt:

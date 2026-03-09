@@ -10,7 +10,8 @@ import type { Step } from "../types.js";
 export const reviewPrFile: Step = {
 	kind: "step",
 	label: "Review PR File",
-	agent: "reviewer",
+	tools: ["read", "bash", "grep", "find", "ls"],
+	temperature: 0.3,
 	description:
 		"Review a single changed file for correctness, security, quality — emit inline comments",
 	prompt:

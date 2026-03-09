@@ -63,11 +63,11 @@ export function statusIcon(status: string): string {
 	}
 }
 
-/** Recursively collect all named agent references from a Runnable tree */
+/** Recursively collect all step labels from a Runnable tree */
 export function collectAgentRefs(r: Runnable): string[] {
 	switch (r.kind) {
 		case "step":
-			return r.agent ? [r.agent] : [];
+			return [r.label];
 		case "sequential":
 			return r.steps.flatMap(collectAgentRefs);
 		case "pool":
@@ -95,9 +95,7 @@ export function describeRunnable(r: Runnable, indent: number): string {
 
 	switch (r.kind) {
 		case "step": {
-			const who = r.agent
-				? `agent: ${r.agent}`
-				: `model: ${r.model ?? "default"}, tools: ${(r.tools ?? ["read", "bash", "edit", "write"]).join(",")}`;
+			const who = `model: ${r.model ?? "default"}, tools: ${(r.tools ?? ["read", "bash", "edit", "write"]).join(",")}`;
 			const json = r.jsonOutput ? ", json" : "";
 			return `${pad}→ [step] "${r.label}" (${who}${json}, gate: ${r.gate.type}, onFail: ${r.onFail.action})`;
 		}

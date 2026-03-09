@@ -8,7 +8,7 @@ import type { Step } from "../types.js";
 export const writeDocs: Step = {
 	kind: "step",
 	label: "Write Documentation",
-	agent: "doc-writer",
+	tools: ["read", "bash", "edit", "write", "grep", "find", "ls"],
 	description:
 		"Write developer documentation from the spec (runs in parallel with implementation)",
 	prompt:

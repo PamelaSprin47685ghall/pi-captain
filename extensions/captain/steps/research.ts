@@ -7,7 +7,7 @@ import type { Step } from "../types.js";
 export const research: Step = {
 	kind: "step",
 	label: "Research",
-	agent: "researcher",
+	tools: ["read", "bash"],
 	description: "Deep dive into the topic",
 	prompt:
 		"You are a research agent. Thoroughly investigate the following topic. " +

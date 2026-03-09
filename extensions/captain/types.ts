@@ -1,65 +1,5 @@
 // ── Captain: Pipeline Orchestration Types ──────────────────────────────────
 
-/**
- * Agent name — any string that matches an agent defined in:
- *   - ~/.pi/agent/agents/*.md   (pi agent files)
- *   - .claude/agents/*.md       (Claude Code agent files)
- *   - Runtime definitions        (captain_agent tool)
- *   - JSON pipeline files        (.pi/pipelines/*.json)
- *
- * The `& {}` intersection preserves autocomplete for known built-in names
- * while accepting any string at the type level (open union pattern).
- */
-export type AgentName =
-	| "architect"
-	| "backend-dev"
-	| "bowser"
-	| "builder"
-	| "canvas-renderer"
-	| "captain"
-	| "clarifier"
-	| "decomposer"
-	| "doc-writer"
-	| "frontend-dev"
-	| "plan-reviewer"
-	| "planner"
-	| "red-team"
-	| "researcher"
-	| "resolver"
-	| "reviewer"
-	| "scout"
-	| "security-reviewer"
-	| "shrinker"
-	| "summarizer"
-	| "synthesizer"
-	| "tester"
-	| "typescript-expert"
-	| "validator"
-	// ── Spec-TDD pipeline agents ─────────────────────────────────────────
-	| "spec-writer"
-	| "tdd-red"
-	| "tdd-green"
-	| "code-reviewer"
-	| "review-fixer"
-	| "pr-preparer"
-	// ── Requirements Gathering pipeline agents ───────────────────────────
-	| "explorer"
-	| "deep-diver"
-	| "challenger"
-	| "req-synthesizer"
-	| (string & {}); // ← open union: accepts ANY string, autocomplete still works for known names
-
-/** Agent config — defines an LLM persona with tool access */
-export interface Agent {
-	name: AgentName;
-	description: string;
-	tools: string[]; // tool names available to this agent
-	model?: string; // e.g. "sonnet", "flash" — resolved via modelRegistry
-	temperature?: number;
-	systemPrompt?: string; // system prompt for LLM calls (loaded from .md body)
-	source?: "runtime" | "md"; // where this agent was defined
-}
-
 /** Gate — validation check after each step */
 export type Gate =
 	| { type: "command"; value: string } // shell command; exit 0 = pass
@@ -107,15 +47,13 @@ export interface Step {
 	kind: "step";
 	label: string;
 
-	// ── Agent (optional) ──────────────────────────────────────────────────
-	/** Named agent to use. Inline fields below override agent defaults. */
-	agent?: AgentName;
-
-	// ── Inline agent config (overrides named agent when provided) ─────────
+	// ── Step config ───────────────────────────────────────────────────────
 	/** Model identifier (e.g. "sonnet", "flash"). Passed as --model. */
 	model?: string;
 	/** Tool names to enable. Passed as --tools read,bash,edit. */
 	tools?: string[];
+	/** Temperature for the LLM call. */
+	temperature?: number;
 	/** System prompt text. Passed as --system-prompt. */
 	systemPrompt?: string;
 	/** Skill file paths. Each passed as --skill <path>. */
@@ -203,7 +141,6 @@ export interface PipelineState {
 /** Persisted state for session reconstruction */
 export interface CaptainDetails {
 	pipelines: Record<string, { spec: Runnable }>;
-	agents: Record<string, Agent>;
 	lastRun?: {
 		name: string;
 		state: PipelineState;

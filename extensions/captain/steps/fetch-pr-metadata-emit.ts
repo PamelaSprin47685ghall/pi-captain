@@ -12,7 +12,7 @@ import type { Step } from "../types.js";
 export const fetchPrMetadataEmit: Step = {
 	kind: "step",
 	label: "Fetch PR Metadata — Emit Metadata",
-	agent: "builder",
+	tools: ["read", "bash", "edit", "write"],
 	description:
 		"Map raw GitHub API JSON to a typed PrMetadata object — validate required fields, throw ParseError on missing/malformed data",
 	prompt:

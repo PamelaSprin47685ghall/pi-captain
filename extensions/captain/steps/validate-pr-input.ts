@@ -12,7 +12,9 @@ import type { Step } from "../types.js";
 export const validatePrInput: Step = {
 	kind: "step",
 	label: "Validate PR Input",
-	agent: "validator",
+	tools: ["read"],
+	model: "flash",
+	temperature: 0,
 	description:
 		"Run all 5 rejection-path tests for parsePrInput: single-segment, non-numeric PR, zero PR, missing '#', and empty string",
 	prompt:

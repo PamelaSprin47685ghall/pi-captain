@@ -8,7 +8,9 @@ import type { Step } from "../types.js";
 export const exploreRequirements: Step = {
 	kind: "step",
 	label: "Explore Requirements",
-	agent: "explorer",
+	tools: ["read", "bash"],
+	model: "sonnet",
+	temperature: 0.7,
 	description:
 		"Broad discovery with open-ended questions to understand vision, goals, and context",
 	prompt:

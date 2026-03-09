@@ -7,7 +7,7 @@ import type { Step } from "../types.js";
 export const summarize: Step = {
 	kind: "step",
 	label: "Summarize",
-	agent: "summarizer",
+	tools: ["read", "bash"],
 	description: "Produce a clear summary",
 	prompt:
 		"You are a summarization agent. Take these research findings and produce " +

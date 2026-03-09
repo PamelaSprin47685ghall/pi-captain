@@ -17,7 +17,9 @@ import type { Step } from "../types.js";
 export const contractTasks: Step = {
 	kind: "step",
 	label: "Contract Tasks",
-	agent: "decomposer",
+	tools: ["read", "bash"],
+	model: "sonnet",
+	temperature: 0.2,
 	description:
 		"Convert BDD scenarios into typed AI execution contracts (prompt-as-contract pattern, UNIT-N format)",
 	prompt:

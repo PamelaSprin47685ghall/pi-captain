@@ -8,7 +8,9 @@ import type { Step } from "../types.js";
 export const shredAndScore: Step = {
 	kind: "step",
 	label: "Shrink and Score",
-	agent: "shrinker",
+	tools: ["read", "bash"],
+	model: "sonnet",
+	temperature: 0.1,
 	description:
 		"Score complexity and re-split any unit above the Haiku-safe threshold",
 	prompt:

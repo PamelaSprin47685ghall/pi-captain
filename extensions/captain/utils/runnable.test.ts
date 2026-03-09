@@ -11,14 +11,13 @@ import {
 
 // ── Fixtures ──────────────────────────────────────────────────────────────
 
-const step = (label: string, agent?: string): Step => ({
+const step = (label: string): Step => ({
 	kind: "step",
 	label,
 	prompt: "do something",
 	gate: { type: "none" },
 	onFail: { action: "skip" },
 	transform: { kind: "full" },
-	...(agent ? { agent } : {}),
 });
 
 const seq = (...steps: Runnable[]): Sequential => ({
@@ -42,31 +41,27 @@ const par = (...steps: Runnable[]): Parallel => ({
 // ── collectAgentRefs ──────────────────────────────────────────────────────
 
 describe("collectAgentRefs", () => {
-	test("step with agent returns agent name", () => {
-		expect(collectAgentRefs(step("s1", "my-agent"))).toEqual(["my-agent"]);
-	});
-
-	test("step without agent returns empty array", () => {
-		expect(collectAgentRefs(step("s1"))).toEqual([]);
+	test("step returns its label", () => {
+		expect(collectAgentRefs(step("s1"))).toEqual(["s1"]);
 	});
 
 	test("sequential collects from all steps", () => {
-		const r = seq(step("a", "agent-a"), step("b", "agent-b"), step("c"));
-		expect(collectAgentRefs(r)).toEqual(["agent-a", "agent-b"]);
+		const r = seq(step("a"), step("b"), step("c"));
+		expect(collectAgentRefs(r)).toEqual(["a", "b", "c"]);
 	});
 
 	test("pool collects from inner step", () => {
-		expect(collectAgentRefs(pool(step("s", "agent-x")))).toEqual(["agent-x"]);
+		expect(collectAgentRefs(pool(step("s")))).toEqual(["s"]);
 	});
 
 	test("parallel collects from all branches", () => {
-		const r = par(step("a", "alpha"), step("b", "beta"));
-		expect(collectAgentRefs(r)).toEqual(["alpha", "beta"]);
+		const r = par(step("a"), step("b"));
+		expect(collectAgentRefs(r)).toEqual(["a", "b"]);
 	});
 
 	test("nested structure collects recursively", () => {
-		const r = seq(par(step("a", "agent-a"), seq(step("b", "agent-b"))));
-		expect(collectAgentRefs(r)).toEqual(["agent-a", "agent-b"]);
+		const r = seq(par(step("a"), seq(step("b"))));
+		expect(collectAgentRefs(r)).toEqual(["a", "b"]);
 	});
 });
 
@@ -190,9 +185,10 @@ describe("describeRunnable", () => {
 		expect(desc).toContain("onFail: skip");
 	});
 
-	test("step with agent shows agent name", () => {
-		const desc = describeRunnable(step("s", "my-agent"), 0);
-		expect(desc).toContain("agent: my-agent");
+	test("step shows model and tools", () => {
+		const desc = describeRunnable(step("s"), 0);
+		expect(desc).toContain("model: default");
+		expect(desc).toContain("tools:");
 	});
 
 	test("sequential shows step count and children", () => {

@@ -9,7 +9,9 @@ import type { Step } from "../types.js";
 export const sliceStories: Step = {
 	kind: "step",
 	label: "Slice Stories",
-	agent: "decomposer",
+	tools: ["read", "bash"],
+	model: "sonnet",
+	temperature: 0.2,
 	description:
 		"Vertically slice EARS requirements into thin user stories using business rules + SPIDR",
 	prompt:

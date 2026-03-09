@@ -10,7 +10,8 @@ import { fixReviewIssues } from "./fix-review-issues.js";
 export const reviewCode: Step = {
 	kind: "step",
 	label: "Code Review",
-	agent: "code-reviewer",
+	tools: ["read", "bash", "grep", "find", "ls"],
+	temperature: 0.3,
 	description:
 		"Review implementation, tests, and documentation for quality and correctness",
 	prompt:

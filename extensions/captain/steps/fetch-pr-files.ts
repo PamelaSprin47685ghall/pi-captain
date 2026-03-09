@@ -9,7 +9,7 @@ import type { Step } from "../types.js";
 export const fetchPrFiles: Step = {
 	kind: "step",
 	label: "Fetch PR Changed Files",
-	agent: "builder",
+	tools: ["read", "bash", "edit", "write"],
 	description:
 		"Fetch all changed files and diffs via GitHub CLI — emit structured file list for parallel review",
 	prompt:

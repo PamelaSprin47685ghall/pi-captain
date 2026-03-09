@@ -10,7 +10,9 @@ import type { Step } from "../types.js";
 export const tddTaskList: Step = {
 	kind: "step",
 	label: "TDD Task List",
-	agent: "decomposer",
+	tools: ["read", "bash"],
+	model: "sonnet",
+	temperature: 0.2,
 	description:
 		"Apply Kent Beck's Canon TDD task list: each BDD scenario → atomic unit tests → 1 function each",
 	prompt:

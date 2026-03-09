@@ -11,7 +11,7 @@ import type { Step } from "../types.js";
 export const fetchPrMetadataAuthCheck: Step = {
 	kind: "step",
 	label: "Fetch PR Metadata — Auth Check",
-	agent: "builder",
+	tools: ["read", "bash", "edit", "write"],
 	description:
 		"Read GITHUB_TOKEN from the environment and throw a typed AuthError if absent or empty — returns token for downstream steps",
 	prompt:

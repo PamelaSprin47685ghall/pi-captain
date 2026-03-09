@@ -8,7 +8,9 @@ import type { Step } from "../types.js";
 export const generateExecutionSpec: Step = {
 	kind: "step",
 	label: "Generate Execution Spec",
-	agent: "resolver",
+	tools: ["read", "bash"],
+	model: "flash",
+	temperature: 0,
 	description:
 		"Convert the task tree into an executable captain pipeline JSON spec",
 	prompt:

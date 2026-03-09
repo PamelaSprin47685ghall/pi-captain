@@ -39,7 +39,9 @@ const reContract: typeof contractTasks = {
 export const validateContracts: Step = {
 	kind: "step",
 	label: "Validate Contracts",
-	agent: "validator",
+	tools: ["read"],
+	model: "flash",
+	temperature: 0,
 	description:
 		"Machine-verifiability gate: typed signature + explicit file + pre-written test + runnable command",
 	prompt:

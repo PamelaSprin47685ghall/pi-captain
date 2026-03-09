@@ -8,7 +8,8 @@ import type { Step } from "../types.js";
 export const tddGreen: Step = {
 	kind: "step",
 	label: "TDD Green — Write Implementation",
-	agent: "tdd-green",
+	tools: ["read", "write", "edit", "bash", "grep", "find", "ls"],
+	temperature: 0.2,
 	description:
 		"Write the minimal implementation code to make all failing tests pass",
 	prompt:

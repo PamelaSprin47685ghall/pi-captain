@@ -9,7 +9,9 @@ import type { Step } from "../types.js";
 export const formatBacklog: Step = {
 	kind: "step",
 	label: "Format Backlog",
-	agent: "resolver",
+	tools: ["read", "bash"],
+	model: "flash",
+	temperature: 0,
 	description:
 		"Synthesize full hierarchy into a BACKLOG.md living decomposition artifact",
 	prompt:

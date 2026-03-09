@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ExecutorContext } from "./executor.js";
-import type { Agent, Parallel, Pool, Sequential, Step } from "./types.js";
+import type { Parallel, Pool, Sequential, Step } from "./types.js";
 
 // ── Shared mutable session config ──────────────────────────────────────────
 // All mock sessions read from this object so individual tests can customise
@@ -99,7 +99,6 @@ function makeCtx(overrides: Partial<ExecutorContext> = {}): ExecutorContext {
 	} as ExecutorContext["model"];
 	return {
 		exec: makeExec(),
-		agents: {} as Record<string, Agent>,
 		model: fakeModel,
 		modelRegistry: {
 			getAll: () => [],
@@ -173,16 +172,6 @@ describe("executeRunnable: step", () => {
 		expect(output).toBe("output without keyword"); // warn keeps output
 		expect(results[0].status).toBe("passed");
 		expect(results[0].error).toContain("Warning");
-	});
-
-	test("unknown agent name throws and step fails", async () => {
-		const step: Step = {
-			...makeStep("bad-agent"),
-			agent: "nonexistent-agent",
-		};
-		const { results } = await executeRunnable(step, "", "", makeCtx());
-		expect(results[0].status).toBe("failed");
-		expect(results[0].error).toContain("nonexistent-agent");
 	});
 
 	test("cancelled signal returns early", async () => {
@@ -313,22 +302,11 @@ describe("executeRunnable: sequential", () => {
 
 	test("stops when a step status is failed (not just skipped)", async () => {
 		// To get status "failed" we need the step to throw, not just skip.
-		// Use an unknown agent to trigger a throw → failed status.
+		// Make createAgentSession throw to trigger a failed status.
 		mock.module("@mariozechner/pi-coding-agent", () => ({
-			createAgentSession: async () => ({
-				session: {
-					subscribe: (fn: (e: unknown) => void) => {
-						fn({
-							type: "message_update",
-							assistantMessageEvent: { type: "text_delta", delta: "ok" },
-						});
-						return () => {};
-					},
-					prompt: async () => {},
-					abort: () => {},
-					dispose: () => {},
-				},
-			}),
+			createAgentSession: async () => {
+				throw new Error("simulated session error");
+			},
 			createReadTool: () => ({ name: "read" }),
 			createBashTool: () => ({ name: "bash" }),
 			createEditTool: () => ({ name: "edit" }),
@@ -349,8 +327,8 @@ describe("executeRunnable: sequential", () => {
 		const seq: Sequential = {
 			kind: "sequential",
 			steps: [
-				// Step 1: unknown agent → throws → status "failed"
-				{ ...makeStep("step-1"), agent: "no-such-agent" },
+				// Step 1: session throws → status "failed"
+				makeStep("step-1"),
 				// Step 2: should NOT run
 				makeStep("step-2"),
 			],

@@ -7,7 +7,7 @@ import type { Step } from "../types.js";
 export const fixBug: Step = {
 	kind: "step",
 	label: "Fix Bug",
-	agent: "backend-dev",
+	tools: ["read", "bash", "edit", "write"],
 	description: "Apply the diagnosed fix to the codebase",
 	prompt:
 		"You are a developer tasked with fixing a bug. The root cause has been identified.\n\n" +

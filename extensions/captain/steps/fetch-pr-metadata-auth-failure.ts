@@ -11,7 +11,9 @@ import type { Step } from "../types.js";
 export const fetchPrMetadataAuthFailure: Step = {
 	kind: "step",
 	label: "Fetch PR Metadata — Auth Failure Path",
-	agent: "validator",
+	tools: ["read"],
+	model: "flash",
+	temperature: 0,
 	description:
 		"Assert that missing/empty GITHUB_TOKEN throws AuthError before any API call is made — no generic HTTP error, no silent fallthrough",
 	prompt:

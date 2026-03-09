@@ -8,7 +8,9 @@ import type { Step } from "../types.js";
 export const decompose: Step = {
 	kind: "step",
 	label: "Decompose",
-	agent: "decomposer",
+	tools: ["read", "bash"],
+	model: "sonnet",
+	temperature: 0.2,
 	description: "Recursively split the spec into atomic sub-tasks",
 	prompt:
 		"You are the Decomposer. Take this structured spec and break it into atomic sub-tasks.\n\n" +

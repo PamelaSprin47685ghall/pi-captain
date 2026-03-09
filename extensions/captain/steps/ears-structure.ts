@@ -9,7 +9,9 @@ import type { Step } from "../types.js";
 export const earsStructure: Step = {
 	kind: "step",
 	label: "EARS Structure",
-	agent: "clarifier",
+	tools: ["read", "bash"],
+	model: "sonnet",
+	temperature: 0.3,
 	description:
 		"Transform raw requirement into testable EARS-structured statements",
 	prompt:

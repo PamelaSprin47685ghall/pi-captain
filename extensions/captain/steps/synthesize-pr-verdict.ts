@@ -44,7 +44,9 @@ REVIEW POSTED: YES / NO
 export const synthesizePrVerdict: Step = {
 	kind: "step",
 	label: "Synthesize PR Verdict",
-	agent: "resolver",
+	tools: ["read", "bash"],
+	model: "flash",
+	temperature: 0,
 	description: `Aggregate all file findings → final verdict + reasoning, then post review to GitHub via CLI`,
 	prompt,
 	gate: none,

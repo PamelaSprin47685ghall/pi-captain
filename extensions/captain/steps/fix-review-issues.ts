@@ -8,7 +8,8 @@ import type { Step } from "../types.js";
 export const fixReviewIssues: Step = {
 	kind: "step",
 	label: "Fix Review Issues",
-	agent: "review-fixer",
+	tools: ["read", "write", "edit", "bash", "grep", "find", "ls"],
+	temperature: 0.2,
 	description:
 		"Fix critical issues found during code review, then re-verify tests pass",
 	prompt:

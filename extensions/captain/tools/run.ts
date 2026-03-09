@@ -190,7 +190,7 @@ function makeStepHooks(
 /** Assemble the ExecutorContext for a pipeline run. */
 function buildEctx(
 	pi: ExtensionAPI,
-	state: CaptainState,
+	_state: CaptainState,
 	pipelineState: PipelineState,
 	resolvedName: string,
 	apiKey: string,
@@ -201,7 +201,7 @@ function buildEctx(
 ): ExecutorContext {
 	return {
 		exec: (cmd, args, opts) => pi.exec(cmd, args, opts),
-		agents: state.agents,
+
 		model: ctx.model,
 		modelRegistry: ctx.modelRegistry,
 		apiKey,
@@ -267,7 +267,6 @@ async function runPipeline(
 		};
 	}
 
-	state.loadMdAgents(ctx.cwd);
 	const inputStr = resolvedInput ?? "";
 	const ectx = buildEctx(
 		pi,

@@ -9,7 +9,9 @@ import type { Step } from "../types.js";
 export const challengeRequirements: Step = {
 	kind: "step",
 	label: "Challenge & Validate",
-	agent: "challenger",
+	tools: ["read", "bash"],
+	model: "sonnet",
+	temperature: 0.6,
 	description:
 		"Stress-test assumptions, find contradictions, and close remaining gaps",
 	prompt:

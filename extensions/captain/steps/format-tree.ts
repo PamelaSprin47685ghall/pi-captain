@@ -8,7 +8,9 @@ import type { Step } from "../types.js";
 export const formatTree: Step = {
 	kind: "step",
 	label: "Format Tree",
-	agent: "shrinker",
+	tools: ["read", "bash"],
+	model: "sonnet",
+	temperature: 0.1,
 	description: "Structure layered units into the final nested task tree",
 	prompt:
 		"You are the Tree Formatter. Take these execution layers and produce the final task tree.\n\n" +

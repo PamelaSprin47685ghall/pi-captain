@@ -10,8 +10,8 @@ export function registerGenerateTool(pi: ExtensionAPI, state: CaptainState) {
 		name: "captain_generate",
 		label: "Captain Generate",
 		description: [
-			"Generate a pipeline on-the-fly using LLM. Inspects all available agents,",
-			"gate types, and step patterns, then produces a complete pipeline spec.",
+			"Generate a pipeline on-the-fly using LLM. Inspects available",
+			"gate types and step patterns, then produces a complete pipeline spec.",
 			"The generated pipeline is immediately registered and ready to run.",
 			"",
 			"Examples:",
@@ -32,24 +32,11 @@ export function registerGenerateTool(pi: ExtensionAPI, state: CaptainState) {
 		}),
 
 		async execute(_id, params, signal, onUpdate, ctx) {
-			const agentCount = Object.keys(state.agents).length;
-			if (agentCount === 0) {
-				return {
-					content: [
-						{
-							type: "text",
-							text: "No agents available. Define agents with captain_agent or add .md files to ~/.pi/agent/agents/",
-						},
-					],
-					isError: true,
-				};
-			}
-
 			onUpdate?.({
 				content: [
 					{
 						type: "text",
-						text: `🧠 Generating pipeline for: "${params.goal}" (${agentCount} agents available)...`,
+						text: `🧠 Generating pipeline for: "${params.goal}"...`,
 					},
 				],
 			});
@@ -70,7 +57,7 @@ export function registerGenerateTool(pi: ExtensionAPI, state: CaptainState) {
 
 				const generated = await generatePipeline(
 					params.goal,
-					state.agents,
+					{},
 					ctx.model,
 					apiKey,
 					signal ?? undefined,

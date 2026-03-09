@@ -7,7 +7,7 @@ import type { Step } from "../types.js";
 export const edgeCaseGen: Step = {
 	kind: "step",
 	label: "Edge Case Tests",
-	agent: "red-team",
+	tools: ["read", "bash", "grep", "find", "ls"],
 	description: "Generate adversarial edge-case and boundary tests",
 	prompt:
 		"You are a red-team tester writing adversarial test cases.\n\n" +

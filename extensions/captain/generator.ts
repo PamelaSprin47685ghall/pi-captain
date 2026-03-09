@@ -73,13 +73,15 @@ const ONFAIL_CATALOG = `
 const RUNNABLE_SPEC = `
 ## Runnable Types (infinitely nestable)
 
-### Step — atomic agent invocation
+### Step — atomic LLM invocation
 {
   kind: "step",
   label: "<human-readable name>",
-  agent: "<agent-name>",         // must match an available agent
+  tools: ["read", "bash", "edit", "write"],  // tool names available to this step
+  model: "<model-id>",           // optional: e.g. "sonnet", "flash" (defaults to current session model)
+  temperature: 0.2,              // optional: sampling temperature
   description: "<what this step does>",
-  prompt: "<instructions for the agent>",  // supports $INPUT (prev output) and $ORIGINAL (user request)
+  prompt: "<instructions for the step>",  // supports $INPUT (prev output) and $ORIGINAL (user request)
   gate: <Gate>,
   onFail: <OnFail>,
   transform: { kind: "full" }    // or { kind: "extract", key: "<key>" } or { kind: "summarize" }
@@ -243,8 +245,8 @@ interface RawRunnable {
 /** Validate step-kind runnable fields and apply defaults */
 function validateStep(r: RawRunnable, path: string): void {
 	if (!r.label) throw new Error(`Step at ${path} missing 'label'`);
-	if (!r.agent) throw new Error(`Step at ${path} missing 'agent'`);
 	if (!r.prompt) throw new Error(`Step at ${path} missing 'prompt'`);
+	if (!r.tools) r.tools = ["read", "bash", "edit", "write"];
 	if (!r.gate) r.gate = { type: "none" };
 	if (!r.onFail) r.onFail = { action: "skip" };
 	if (!r.transform) r.transform = { kind: "full" };

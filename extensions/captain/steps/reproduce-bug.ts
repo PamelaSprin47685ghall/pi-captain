@@ -7,7 +7,7 @@ import type { Step } from "../types.js";
 export const reproduceBug: Step = {
 	kind: "step",
 	label: "Reproduce Bug",
-	agent: "tester",
+	tools: ["read", "bash", "edit", "write", "grep", "find", "ls"],
 	description: "Create a minimal reproduction of the reported bug",
 	prompt:
 		"You are a QA engineer. Your task is to reproduce a reported bug.\n\n" +

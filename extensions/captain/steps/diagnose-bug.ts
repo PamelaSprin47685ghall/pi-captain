@@ -7,7 +7,7 @@ import type { Step } from "../types.js";
 export const diagnoseBug: Step = {
 	kind: "step",
 	label: "Diagnose Bug",
-	agent: "architect",
+	tools: ["read", "bash"],
 	description: "Trace the root cause of the reproduced bug",
 	prompt:
 		"You are a senior debugger. A bug has been reproduced with the following details.\n\n" +

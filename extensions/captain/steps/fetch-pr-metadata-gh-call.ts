@@ -11,7 +11,7 @@ import type { Step } from "../types.js";
 export const fetchPrMetadataGhCall: Step = {
 	kind: "step",
 	label: "Fetch PR Metadata — GitHub API Call",
-	agent: "builder",
+	tools: ["read", "bash", "edit", "write"],
 	description:
 		"Call GET /repos/{owner}/{repo}/pulls/{prNumber} with Bearer token — return raw PR JSON or throw a typed HttpError on non-2xx",
 	prompt:

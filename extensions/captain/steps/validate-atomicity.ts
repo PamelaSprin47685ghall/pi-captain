@@ -24,7 +24,9 @@ const reExpandTasks: typeof tddTaskList = {
 export const validateAtomicity: Step = {
 	kind: "step",
 	label: "Validate Atomicity",
-	agent: "validator",
+	tools: ["read"],
+	model: "flash",
+	temperature: 0,
 	description:
 		"Verify each TDD task is truly atomic: 1 function, 1 test, 5–15 min",
 	prompt:

@@ -7,7 +7,7 @@ import type { Step } from "../types.js";
 export const analyzeCodebase: Step = {
 	kind: "step",
 	label: "Analyze Codebase",
-	agent: "architect",
+	tools: ["read", "bash"],
 	description: "Analyze code structure and identify refactoring opportunities",
 	prompt:
 		"You are a senior software architect performing a codebase analysis.\n\n" +

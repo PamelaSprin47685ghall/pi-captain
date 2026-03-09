@@ -1,34 +1,12 @@
 // ── CaptainState — All mutable runtime state and file I/O ─────────────────
-// Encapsulates pipelines, agents, and session reconstruction in one place.
+// Encapsulates pipelines and session reconstruction in one place.
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { homedir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { basename, resolve } from "node:path";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import * as builtinPipelines from "./pipelines/index.js";
-import type {
-	Agent,
-	AgentName,
-	CaptainDetails,
-	PipelineState,
-	Runnable,
-} from "./types.js";
-import { parseFrontmatter } from "./utils/frontmatter.js";
-import { collectAgentRefs, describeRunnable } from "./utils/index.js";
-
-const baseDir = (() => {
-	try {
-		return new URL(".", import.meta.url).pathname;
-	} catch {
-		return process.cwd();
-	}
-})();
-
-const AGENT_DIRS = [
-	join(baseDir, "agents"), // bundled with pi-captain repo
-	join(homedir(), ".pi", "agent", "agents"), // pi global
-	join(homedir(), ".claude", "agents"), // Claude Code global
-];
+import type { CaptainDetails, PipelineState, Runnable } from "./types.js";
+import { describeRunnable } from "./utils/index.js";
 
 const CAPTAIN_TOOLS = new Set([
 	"captain_define",
@@ -36,13 +14,11 @@ const CAPTAIN_TOOLS = new Set([
 	"captain_run",
 	"captain_list",
 	"captain_status",
-	"captain_agent",
 	"captain_generate",
 ]);
 
 export class CaptainState {
 	pipelines: Record<string, { spec: Runnable }> = {};
-	agents: Record<string, Agent> = {};
 	runningState: PipelineState | null = null;
 
 	/** Built-in pipeline registry from pipelines/*.ts modules */
@@ -55,7 +31,6 @@ export class CaptainState {
 			const name = `captain:${kebab}`;
 			this.builtinPresetMap[name] = { pipeline: mod.pipeline };
 		}
-		this.loadMdAgents();
 	}
 
 	// ── Snapshot ─────────────────────────────────────────────────────────
@@ -63,81 +38,10 @@ export class CaptainState {
 	snapshot(lastRun?: PipelineState): CaptainDetails {
 		return {
 			pipelines: { ...this.pipelines },
-			agents: { ...this.agents },
 			lastRun: lastRun
 				? { name: lastRun.name, state: { ...lastRun } }
 				: undefined,
 		};
-	}
-
-	// ── Agent Discovery ───────────────────────────────────────────────────
-
-	private findMdFiles(dir: string): string[] {
-		if (!existsSync(dir)) return [];
-		const files: string[] = [];
-		for (const entry of readdirSync(dir)) {
-			const full = join(dir, entry);
-			try {
-				if (statSync(full).isDirectory()) files.push(...this.findMdFiles(full));
-				else if (entry.endsWith(".md")) files.push(full);
-			} catch {
-				/* skip unreadable */
-			}
-		}
-		return files;
-	}
-
-	parseMdAgent(filePath: string): Agent | null {
-		const content = readFileSync(filePath, "utf-8");
-		const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
-		if (!fmMatch) return null;
-
-		const fm = parseFrontmatter(fmMatch[1]);
-		const body = content.slice(fmMatch[0].length).trim();
-		const name =
-			typeof fm.name === "string" ? fm.name : basename(filePath, ".md");
-
-		let tools: string[] = [];
-		if (Array.isArray(fm.tools)) {
-			tools = fm.tools.map((t) => String(t).trim());
-		} else if (typeof fm.tools === "string") {
-			tools = fm.tools.split(",").map((t) => t.trim());
-		}
-
-		const model = typeof fm.model === "string" ? fm.model : undefined;
-		const temperature =
-			typeof fm.temperature === "number" ? fm.temperature : undefined;
-
-		return {
-			name: name as AgentName,
-			description: typeof fm.description === "string" ? fm.description : "",
-			tools,
-			model,
-			temperature,
-			systemPrompt: body || undefined,
-			source: "md",
-		};
-	}
-
-	private shouldRegisterAgent(name: string): boolean {
-		return !this.agents[name] || this.agents[name].source !== "runtime";
-	}
-
-	loadMdAgents(cwd?: string) {
-		const dirs = [...AGENT_DIRS];
-		if (cwd) {
-			dirs.push(join(cwd, "agents"));
-			dirs.push(join(cwd, ".pi", "agents"));
-			dirs.push(join(cwd, ".claude", "agents"));
-		}
-		for (const dir of dirs) {
-			for (const filePath of this.findMdFiles(dir)) {
-				const agent = this.parseMdAgent(filePath);
-				if (!agent) continue;
-				if (this.shouldRegisterAgent(agent.name))
-					this.agents[agent.name] = agent;
-			}
-		}
 	}
 
 	// ── Preset Discovery & Loading ────────────────────────────────────────
@@ -149,49 +53,28 @@ export class CaptainState {
 		}));
 	}
 
-	loadBuiltinPreset(name: string): {
-		name: string;
-		agentCount: number;
-		spec: Runnable;
-	} {
+	loadBuiltinPreset(name: string): { name: string; spec: Runnable } {
 		const preset = this.builtinPresetMap[name];
 		if (!preset) throw new Error(`Builtin preset "${name}" not found`);
 		this.pipelines[name] = { spec: preset.pipeline };
-		const referencedAgents = collectAgentRefs(preset.pipeline);
-		return {
-			name,
-			agentCount: [...new Set(referencedAgents)].length,
-			spec: preset.pipeline,
-		};
+		return { name, spec: preset.pipeline };
 	}
 
-	loadPipelineFile(filePath: string): {
-		name: string;
-		agentCount: number;
-		spec: Runnable;
-	} {
+	loadPipelineFile(filePath: string): { name: string; spec: Runnable } {
 		const raw = readFileSync(filePath, "utf-8");
-		const data = JSON.parse(raw) as {
-			agents?: Record<string, Agent>;
-			pipeline: Runnable;
-		};
+		const data = JSON.parse(raw) as { pipeline: Runnable };
 		if (!data.pipeline?.kind) {
 			throw new Error(
 				"Invalid pipeline file: missing 'pipeline' with 'kind' field",
 			);
 		}
-		const agentEntries = Object.entries(data.agents ?? {});
-		for (const [key, agent] of agentEntries) {
-			this.agents[key] = { ...agent, name: key as AgentName };
-		}
 		const name = basename(filePath, ".json");
 		this.pipelines[name] = { spec: data.pipeline };
-		return { name, agentCount: agentEntries.length, spec: data.pipeline };
+		return { name, spec: data.pipeline };
 	}
 
 	async loadTsPipelineFile(filePath: string): Promise<{
 		name: string;
-		agentCount: number;
 		spec: Runnable;
 		source: string;
 	}> {
@@ -203,34 +86,18 @@ export class CaptainState {
 				`Invalid TypeScript pipeline file: "${filePath}" must export a "pipeline" const of type Runnable`,
 			);
 		}
-		const agents: Record<string, Agent> =
-			mod.agents ?? mod.default?.agents ?? {};
-		const agentEntries = Object.entries(agents);
-		for (const [key, agent] of agentEntries) {
-			this.agents[key] = { ...agent, name: key as AgentName };
-		}
 		const ext = filePath.endsWith(".ts") ? ".ts" : ".js";
 		const name = basename(filePath, ext);
 		this.pipelines[name] = { spec: pipeline };
-		return {
-			name,
-			agentCount: agentEntries.length,
-			spec: pipeline,
-			source: filePath,
-		};
+		return { name, spec: pipeline, source: filePath };
 	}
 
 	resolvePreset(
 		name: string,
 		cwd: string,
 	):
-		| Promise<{
-				name: string;
-				agentCount: number;
-				spec: Runnable;
-				source?: string;
-		  }>
-		| { name: string; agentCount: number; spec: Runnable; source?: string }
+		| Promise<{ name: string; spec: Runnable; source?: string }>
+		| { name: string; spec: Runnable; source?: string }
 		| undefined {
 		if (this.builtinPresetMap[name]) return this.loadBuiltinPreset(name);
 
@@ -252,7 +119,6 @@ export class CaptainState {
 
 	private applyCaptainDetails(d: CaptainDetails): void {
 		this.pipelines = d.pipelines ?? this.pipelines;
-		this.agents = d.agents ?? this.agents;
 		if (d.lastRun) {
 			const s = d.lastRun.state as PipelineState & {
 				currentSteps?: unknown;
@@ -272,7 +138,6 @@ export class CaptainState {
 
 	reconstruct(ctx: ExtensionContext): void {
 		this.pipelines = {};
-		this.agents = {};
 		this.runningState = null;
 
 		for (const entry of ctx.sessionManager.getBranch()) {
@@ -282,7 +147,6 @@ export class CaptainState {
 			const d = entry.message.details as CaptainDetails | undefined;
 			if (d) this.applyCaptainDetails(d);
 		}
-		this.loadMdAgents(ctx.cwd);
 	}
 
 	// ── Pipeline List Helpers ─────────────────────────────────────────────

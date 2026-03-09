@@ -9,7 +9,9 @@ import type { Step } from "../types.js";
 export const bddScenarios: Step = {
 	kind: "step",
 	label: "BDD Scenarios",
-	agent: "clarifier",
+	tools: ["read", "bash"],
+	model: "sonnet",
+	temperature: 0.3,
 	description:
 		"Distill user stories into Given/When/Then acceptance scenarios (ATDD outer loop)",
 	prompt:

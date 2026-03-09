@@ -8,7 +8,9 @@ import type { Step } from "../types.js";
 export const captureAndClarify: Step = {
 	kind: "step",
 	label: "Capture and Clarify",
-	agent: "clarifier",
+	tools: ["read", "bash"],
+	model: "sonnet",
+	temperature: 0.3,
 	description: "Transform raw requirement into a structured spec",
 	prompt:
 		"You are the Clarifier. Take this raw requirement and produce a structured spec.\n\n" +

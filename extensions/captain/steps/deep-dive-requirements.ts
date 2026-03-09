@@ -9,7 +9,9 @@ import type { Step } from "../types.js";
 export const deepDiveRequirements: Step = {
 	kind: "step",
 	label: "Deep Dive Requirements",
-	agent: "deep-diver",
+	tools: ["read", "bash"],
+	model: "sonnet",
+	temperature: 0.5,
 	description:
 		"Targeted closed and open questions to eliminate ambiguity and lock down specifics",
 	prompt:

@@ -21,7 +21,6 @@ import {
 import { evaluateGate, type GateResult } from "./gates.js";
 import { mergeOutputs } from "./merge.js";
 import type {
-	Agent,
 	Gate,
 	OnFail,
 	Parallel,
@@ -48,7 +47,6 @@ export interface ExecutorContext {
 		args: string[],
 		opts?: { signal?: AbortSignal },
 	) => Promise<{ stdout: string; stderr: string; code: number }>;
-	agents: Record<string, Agent>;
 	/** Fallback model used by LLM gates and merge strategies */
 	model: Model<Api>;
 	modelRegistry: ModelRegistryLike;
@@ -164,31 +162,20 @@ async function runStepCore(
 	gateResult?: GateResult;
 	error?: string;
 }> {
-	const agent = step.agent ? ectx.agents[step.agent] : undefined;
-	if (step.agent && !agent) {
-		const available = Object.keys(ectx.agents).join(", ");
-		throw new Error(
-			`Agent "${step.agent}" not found. Available agents: ${available}`,
-		);
-	}
-
 	const prompt = interpolatePrompt(step.prompt, input, original);
 
 	// ── Resolve model ────────────────────────────────────────────────────
-	// Default to the current session model (ectx.model) when no model is specified,
-	// rather than a hardcoded alias like "sonnet" that could resolve to the wrong provider.
-	const modelStr = step.model ?? agent?.model;
-	const model = modelStr
-		? resolveModel(modelStr, ectx.modelRegistry, ectx.model)
+	// Default to the current session model (ectx.model) when no model is specified.
+	const model = step.model
+		? resolveModel(step.model, ectx.modelRegistry, ectx.model)
 		: ectx.model;
 
 	// ── Resolve tools ────────────────────────────────────────────────────
-	const toolNames = step.tools ??
-		agent?.tools ?? ["read", "bash", "edit", "write"];
+	const toolNames = step.tools ?? ["read", "bash", "edit", "write"];
 	const tools = resolveTools(toolNames, ectx.cwd);
 
 	// ── Build resource loader (skills, extensions, system prompt) ────────
-	const systemPrompt = step.systemPrompt ?? agent?.systemPrompt;
+	const systemPrompt = step.systemPrompt;
 
 	const loader = new DefaultResourceLoader({
 		cwd: ectx.cwd,
@@ -213,6 +200,7 @@ async function runStepCore(
 		settingsManager: SettingsManager.inMemory({
 			compaction: { enabled: false },
 		}),
+		...(step.temperature !== undefined && { temperature: step.temperature }),
 	});
 
 	// Wire abort signal → session.abort()

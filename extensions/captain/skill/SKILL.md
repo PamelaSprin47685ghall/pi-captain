@@ -1,8 +1,18 @@
+---
+name: captain
+description: >
+  Orchestrate multi-step workflows using Captain pipelines. Each step declares
+  its own model, tools, and temperature inline — no separate agent setup needed.
+  Supports sequential, parallel, and pool composition with quality gates,
+  failure handling, and merge strategies. Use when building research, code
+  generation, review, or any multi-step LLM workflow.
+---
+
 # Captain — Pipeline Orchestration
 
 ## Overview
 
-Captain turns pi into a multi-agent orchestration platform. Define typed pipeline specs with sequential, parallel, and pool composition patterns, then execute them with automatic git worktree isolation, gate validation, failure handling, and merge strategies.
+Captain turns pi into a pipeline orchestration platform. Define typed pipeline specs with sequential, parallel, and pool composition patterns, then execute them with automatic git worktree isolation, gate validation, failure handling, and merge strategies.
 
 ## When to Use
 
@@ -15,7 +25,6 @@ Captain turns pi into a multi-agent orchestration platform. Define typed pipelin
 
 | Tool | Purpose |
 |------|---------|
-| `captain_agent` | Define a reusable named agent (model, tools, systemPrompt) |
 | `captain_define` | Define a pipeline from a JSON Runnable spec |
 | `captain_load` | Load a precreated pipeline from a preset or JSON file |
 | `captain_run` | Execute a defined pipeline with input |
@@ -25,28 +34,26 @@ Captain turns pi into a multi-agent orchestration platform. Define typed pipelin
 
 ## Step Fields
 
-Each step runs as an in-process pi SDK session (`createAgentSession`). All config fields are optional — defaults are sensible.
+Each step runs as an in-process pi SDK session. All config fields are optional — defaults are sensible.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `label` | string | required | Display name for the step |
-| `prompt` | string | required | Prompt sent to the agent. Supports `$INPUT`, `$ORIGINAL` |
-| `agent` | string | — | Named agent (model/tools/systemPrompt from its definition) |
-| `model` | string | `"sonnet"` | Model identifier (pattern-matched, e.g. `"flash"`, `"claude-opus-4-5"`). Overrides agent default |
-| `tools` | string[] | `["read","bash","edit","write"]` | Tool names to enable. Overrides agent default |
-| `systemPrompt` | string | — | System prompt override. Overrides agent default |
-| `skills` | string[] | — | Additional skill file paths to inject into the session |
-| `extensions` | string[] | — | Additional extension file paths to load into the session |
-| `jsonOutput` | boolean | `false` | Ask the agent to produce structured JSON output |
+| `prompt` | string | required | Prompt sent to the step. Supports `$INPUT`, `$ORIGINAL` |
+| `model` | string | session model | Model identifier (e.g. `"flash"`, `"sonnet"`) |
+| `tools` | string[] | `["read","bash","edit","write"]` | Tool names to enable |
+| `temperature` | number | — | Sampling temperature (0–1) |
+| `systemPrompt` | string | — | System prompt for the LLM session |
+| `skills` | string[] | — | Additional skill file paths to inject |
+| `extensions` | string[] | — | Additional extension file paths to load |
+| `jsonOutput` | boolean | `false` | Ask the step to produce structured JSON output |
 | `gate` | Gate | required | Validation after the step runs |
 | `onFail` | OnFail | required | What to do when the gate fails |
 | `transform` | Transform | required | How to pass output to the next step |
 
 ## Quick Start
 
-You can configure a step inline or reference a named agent — or both (inline fields override agent defaults).
-
-### Option A — Inline steps (no agent setup needed)
+### 1. Define a pipeline
 
 ```json
 {
@@ -57,8 +64,7 @@ You can configure a step inline or reference a named agent — or both (inline f
       "label": "Research",
       "model": "sonnet",
       "tools": ["read", "bash"],
-      "systemPrompt": "You are a thorough researcher.",
-      "prompt": "Research the following topic:\n$ORIGINAL",
+      "prompt": "Research the following topic thoroughly:\n$ORIGINAL",
       "gate": { "type": "none" },
       "onFail": { "action": "skip" },
       "transform": { "kind": "full" }
@@ -77,7 +83,8 @@ You can configure a step inline or reference a named agent — or both (inline f
       "kind": "step",
       "label": "Review",
       "model": "flash",
-      "tools": ["read"],
+      "tools": ["read", "bash"],
+      "temperature": 0.3,
       "jsonOutput": true,
       "prompt": "Review this implementation:\n$INPUT\n\nOriginal request: $ORIGINAL\n\nReturn JSON: {score, issues[], verdict}",
       "gate": { "type": "user", "value": true },
@@ -88,59 +95,7 @@ You can configure a step inline or reference a named agent — or both (inline f
 }
 ```
 
-### Option B — Named agents (reusable across pipelines)
-
-Define once, reference by name in any step:
-
-```
-captain_agent: name="researcher", description="Web research agent", tools="read,bash", model="sonnet"
-captain_agent: name="coder", description="Implementation agent", tools="read,bash,edit,write", model="sonnet"
-captain_agent: name="reviewer", description="Code review agent", tools="read,bash", model="flash"
-```
-
-```json
-{
-  "kind": "sequential",
-  "steps": [
-    {
-      "kind": "step",
-      "label": "Research",
-      "agent": "researcher",
-      "prompt": "Research the following topic thoroughly:\n$ORIGINAL",
-      "gate": { "type": "none" },
-      "onFail": { "action": "skip" },
-      "transform": { "kind": "full" }
-    },
-    {
-      "kind": "step",
-      "label": "Implement",
-      "agent": "coder",
-      "prompt": "Based on this research:\n$INPUT\n\nImplement: $ORIGINAL",
-      "gate": { "type": "command", "value": "bun test" },
-      "onFail": { "action": "retry", "max": 3 },
-      "transform": { "kind": "full" }
-    }
-  ]
-}
-```
-
-### Option C — Mixed (agent defaults + inline overrides)
-
-```json
-{
-  "kind": "step",
-  "label": "Fast review",
-  "agent": "reviewer",
-  "model": "flash",
-  "jsonOutput": true,
-  "prompt": "Review $INPUT. Return JSON: {score, issues[]}",
-  "gate": { "type": "none" },
-  "onFail": { "action": "skip" },
-  "transform": { "kind": "full" }
-}
-```
-
-### Run it
+### 2. Run it
 
 ```
 captain_run: name="my-pipeline", input="Build a REST API for user management"
@@ -148,7 +103,7 @@ captain_run: name="my-pipeline", input="Build a REST API for user management"
 
 ## Loading Pipeline Presets
 
-Instead of defining agents and pipelines manually, load precreated presets:
+Instead of defining pipelines manually, load precreated presets:
 
 ### List available presets
 ```
@@ -169,24 +124,12 @@ captain_load: action="load", name="./my-pipeline.json"
 ### Preset file format
 ```json
 {
-  "agents": {
-    "researcher": {
-      "name": "researcher",
-      "description": "Gathers information",
-      "tools": ["read", "bash"],
-      "model": "sonnet"
-    }
-  },
   "pipeline": {
     "kind": "sequential",
     "steps": [...]
   }
 }
 ```
-
-### Preset locations
-- **Builtin**: `~/.pi/agent/extensions/captain/samples/*.json` — shipped with Captain
-- **Project-local**: `.pi/pipelines/*.json` — per-project presets (create this directory)
 
 ### Slash command
 - `/captain-load` — list available presets
@@ -198,15 +141,15 @@ captain_load: action="load", name="./my-pipeline.json"
 Each step's output becomes the next step's `$INPUT`. Use for linear workflows.
 
 ### Parallel (different tasks concurrently)
-Run different agents on the same input simultaneously. Each gets its own git worktree. Results are merged via strategy.
+Run different steps on the same input simultaneously. Each gets its own git worktree. Results are merged via strategy.
 
 ```json
 {
   "kind": "parallel",
   "steps": [
-    { "kind": "step", "label": "Frontend", "agent": "coder", ... },
-    { "kind": "step", "label": "Backend", "agent": "coder", ... },
-    { "kind": "step", "label": "Tests", "agent": "reviewer", ... }
+    { "kind": "step", "label": "Frontend", "tools": ["read","bash","edit","write"], "..." : "..." },
+    { "kind": "step", "label": "Backend", "tools": ["read","bash","edit","write"], "..." : "..." },
+    { "kind": "step", "label": "Tests", "tools": ["read","bash"], "..." : "..." }
   ],
   "merge": { "strategy": "concat" }
 }
@@ -218,37 +161,14 @@ Replicate one step N times for diverse solutions, then merge. Great for brainsto
 ```json
 {
   "kind": "pool",
-  "step": { "kind": "step", "label": "Solve", "agent": "solver", ... },
+  "step": { "kind": "step", "label": "Solve", "tools": ["read","bash","edit","write"], "..." : "..." },
   "count": 3,
   "merge": { "strategy": "vote" }
 }
 ```
 
 ### Nested Composition
-Any slot that accepts a step also accepts sequential, pool, or parallel — infinite nesting:
-
-```json
-{
-  "kind": "sequential",
-  "steps": [
-    { "kind": "step", "label": "Plan", ... },
-    {
-      "kind": "parallel",
-      "steps": [
-        { "kind": "step", "label": "Module A", ... },
-        {
-          "kind": "pool",
-          "step": { "kind": "step", "label": "Module B attempt", ... },
-          "count": 2,
-          "merge": { "strategy": "rank" }
-        }
-      ],
-      "merge": { "strategy": "concat" }
-    },
-    { "kind": "step", "label": "Integration test", ... }
-  ]
-}
-```
+Any slot that accepts a step also accepts sequential, pool, or parallel — infinite nesting.
 
 ## Merge Strategies
 
@@ -261,9 +181,6 @@ Any slot that accepts a step also accepts sequential, pool, or parallel — infi
 | `rank` | LLM ranks outputs and synthesizes top ones |
 
 ## Gate Types
-
-Gates can be attached to individual steps **or** to composition nodes (sequential, pool, parallel).
-When a composition gate fails, the entire scope is retried/skipped/fallback'd.
 
 | Gate | Use When |
 |------|----------|
@@ -281,124 +198,23 @@ When a composition gate fails, the entire scope is retried/skipped/fallback'd.
 | `{ "action": "skip" }` | Mark as skipped, pass empty $INPUT to next |
 | `{ "action": "fallback", "step": {...} }` | Run an alternative step instead |
 
-## Composition Gates
-
-Gates can be attached to any composition node, not just individual steps.
-When a composition gate fails, the entire scope is retried/skipped/fallback'd.
-
-### Gate a whole sequence
-```json
-{
-  "kind": "sequential",
-  "steps": [
-    { "kind": "step", "label": "Plan", "agent": "planner", "..." : "..." },
-    { "kind": "step", "label": "Build", "agent": "coder", "..." : "..." },
-    { "kind": "step", "label": "Test", "agent": "tester", "..." : "..." }
-  ],
-  "gate": { "type": "command", "value": "bun test" },
-  "onFail": { "action": "retry", "max": 2 }
-}
-```
-If `bun test` fails after the last step, re-run the entire Plan → Build → Test sequence.
-
-### Gate merged parallel output
-```json
-{
-  "kind": "parallel",
-  "steps": [
-    { "kind": "step", "label": "Frontend", "agent": "coder", "..." : "..." },
-    { "kind": "step", "label": "Backend", "agent": "coder", "..." : "..." }
-  ],
-  "merge": { "strategy": "concat" },
-  "gate": { "type": "command", "value": "bun typecheck" },
-  "onFail": { "action": "retry", "max": 2 }
-}
-```
-If typecheck fails after merge, re-run both branches and re-merge.
-
-### Gate a pool
-```json
-{
-  "kind": "pool",
-  "step": { "kind": "step", "label": "Solve", "agent": "solver", "..." : "..." },
-  "count": 3,
-  "merge": { "strategy": "vote" },
-  "gate": { "type": "assert", "fn": "output.includes('SOLUTION')" },
-  "onFail": { "action": "retry", "max": 2 }
-}
-```
-If the merged output doesn't contain 'SOLUTION', re-run all 3 branches and re-merge.
-
 ## Gate Factories (TypeScript pipelines)
 
-When building pipelines as `.ts` modules, import parameterized gate factories from `gates/index.js`:
+When building pipelines as `.ts` modules, import parameterized gate factories:
 
 ```ts
-import { command, outputIncludes, outputMinLength, bunTest, none } from "../gates/index.js";
-import { retry, skip, fallback } from "../gates/index.js";
+import { command, outputMinLength, bunTest, none, retry, skip } from "../gates/index.js";
 ```
 
-### Available gate factories
-
-| Factory | Example | Gate produced |
-|---------|---------|---------------|
-| `none` | `gate: none` | Always passes |
-| `user` | `gate: user` | Human approval |
-| `command(cmd)` | `command("bun test")` | Shell command, exit 0 = pass |
-| `file(path)` | `file("dist/index.js")` | File existence check |
-| `assert(expr)` | `assert("output.length > 100")` | JS assert expression |
-| `outputIncludes(s)` | `outputIncludes("SUCCESS")` | Output contains string |
-| `outputIncludesCI(s)` | `outputIncludesCI("file")` | Case-insensitive contains |
-| `outputMinLength(n)` | `outputMinLength(100)` | Output at least N chars |
-| `commandAll(...cmds)` | `commandAll("bun test", "tsc --noEmit")` | All commands must pass |
-
-### Preset constants
-
-| Constant | Equivalent |
-|----------|------------|
+| Factory | Gate produced |
+|---------|---------------|
+| `none` | Always passes |
+| `user` | Human approval |
+| `command(cmd)` | Shell command, exit 0 = pass |
+| `file(path)` | File existence check |
+| `outputMinLength(n)` | Output at least N chars |
 | `bunTest` | `command("bun test")` |
-| `bunTypecheck` | `command("bunx tsc --noEmit")` |
-| `bunLint` | `command("bun run lint")` |
-| `distExists` | `file("dist/index.js")` |
 | `testAndTypecheck` | `commandAll("bun test", "bunx tsc --noEmit")` |
-
-### OnFail factories
-
-| Factory | Example |
-|---------|---------|
-| `retry(max?)` | `retry(3)` — retry up to 3 times |
-| `skip` | `skip` — mark as skipped, pass empty downstream |
-| `fallback(step)` | `fallback(myFallbackStep)` — run alternative step |
-
-### Example: using factories in a step
-
-```ts
-import { command, retry } from "../../gates/index.js";
-
-export const buildStep: Step = {
-  kind: "step",
-  label: "Build",
-  agent: "coder",
-  description: "Build the project",
-  prompt: "...",
-  gate: command("bun build"),     // ← parameterized
-  onFail: retry(2),               // ← parameterized
-  transform: { kind: "full" },
-};
-```
-
-### Example: using factories on a composition node
-
-```ts
-import { bunTest, testAndTypecheck, retry } from "../gates/index.js";
-
-const pipeline: Runnable = {
-  kind: "sequential",
-  steps: [planStep, buildStep, testStep],
-  gate: testAndTypecheck,   // ← validates the whole sequence
-  onFail: retry(2),         // ← retries ALL steps if gate fails
-};
-```
 
 ## Prompt Variables
 

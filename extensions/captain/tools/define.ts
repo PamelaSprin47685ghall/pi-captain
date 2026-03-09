@@ -3,7 +3,7 @@ import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import type { CaptainState } from "../state.js";
 import type { CaptainDetails, Runnable } from "../types.js";
-import { collectAgentRefs, describeRunnable } from "../utils/index.js";
+import { describeRunnable } from "../utils/index.js";
 
 export function registerDefineTool(pi: ExtensionAPI, state: CaptainState) {
 	pi.registerTool({
@@ -15,8 +15,8 @@ export function registerDefineTool(pi: ExtensionAPI, state: CaptainState) {
 			"",
 			"Step shape: { kind: 'step', label, prompt, gate, onFail, transform, ...config }",
 			"  - prompt supports $INPUT (previous output) and $ORIGINAL (user request)",
-			"  - agent?: named agent (optional — inline fields below override agent defaults)",
-			"  - model?: 'sonnet'|'flash'|...  tools?: ['read','bash',...]  systemPrompt?: '...'",
+			"  - model?: 'sonnet'|'flash'|...  tools?: ['read','bash',...]  temperature?: 0.2",
+			"  - systemPrompt?: '...'",
 			"  - skills?: ['path/to/skill.md']  extensions?: ['path/to/ext.ts']",
 			"  - jsonOutput?: true  → passes --mode json to pi (step output is structured JSON)",
 			"  - gate: { type: 'command'|'user'|'file'|'assert'|'llm'|'none', value }",
@@ -29,7 +29,6 @@ export function registerDefineTool(pi: ExtensionAPI, state: CaptainState) {
 			"Parallel: { kind: 'parallel', steps: Runnable[], merge: { strategy }, gate?, onFail? }",
 			"MergeStrategy: 'concat'|'awaitAll'|'firstPass'|'vote'|'rank'",
 			"",
-			"Define agents first with captain_agent, then reference them by name.",
 		].join("\n"),
 		parameters: Type.Object({
 			name: Type.String({ description: "Pipeline name" }),
@@ -52,14 +51,6 @@ export function registerDefineTool(pi: ExtensionAPI, state: CaptainState) {
 					};
 				}
 
-				const unknownAgents = collectAgentRefs(spec).filter(
-					(name) => !state.agents[name],
-				);
-				const warning =
-					unknownAgents.length > 0
-						? `\n⚠️  Unknown agent(s): ${unknownAgents.join(", ")} — make sure they are defined before running.`
-						: "";
-
 				state.pipelines[params.name] = { spec };
 				const savedPath = state.savePipelineToFile(params.name, spec, ctx.cwd);
 				const summary = describeRunnable(spec, 0);
@@ -68,7 +59,7 @@ export function registerDefineTool(pi: ExtensionAPI, state: CaptainState) {
 					content: [
 						{
 							type: "text",
-							text: `Captain pipeline "${params.name}" defined:${warning}\n${summary}\n\n💾 Saved to ${savedPath}`,
+							text: `Captain pipeline "${params.name}" defined:\n${summary}\n\n💾 Saved to ${savedPath}`,
 						},
 					],
 					details: state.snapshot(),

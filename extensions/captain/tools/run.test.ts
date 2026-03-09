@@ -86,15 +86,15 @@ function makeMinimalState(
 	return {
 		pipelines,
 		builtinPresetMap,
-		agents: {},
+
 		runningState: null,
-		loadMdAgents: () => {},
-		snapshot: () => ({ pipelines, agents: {}, lastRun: undefined }),
+
+		snapshot: () => ({ pipelines, lastRun: undefined }),
 		resolvePreset: (name: string) => {
 			if (builtinPresetMap[name]) {
 				// Simulate auto-load
 				pipelines[name] = { spec: builtinPresetMap[name].pipeline };
-				return { name, agentCount: 0, spec: builtinPresetMap[name].pipeline };
+				return { name, spec: builtinPresetMap[name].pipeline };
 			}
 			return undefined;
 		},

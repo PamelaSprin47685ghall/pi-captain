@@ -7,7 +7,7 @@ import type { Step } from "../types.js";
 export const refactorCode: Step = {
 	kind: "step",
 	label: "Refactor Code",
-	agent: "backend-dev",
+	tools: ["read", "bash", "edit", "write"],
 	description: "Apply refactoring changes based on the analysis plan",
 	prompt:
 		"You are a developer performing a carefully planned refactoring.\n\n" +

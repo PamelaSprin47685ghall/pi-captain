@@ -64,7 +64,9 @@ const CANVAS_PROMPT =
 export const renderCanvas: Step = {
 	kind: "step",
 	label: "Render Canvas",
-	agent: "canvas-renderer",
+	tools: ["read", "bash", "write"],
+	model: "sonnet",
+	temperature: 0,
 	description:
 		"Convert the layered task tree into a backlog.canvas file for Obsidian",
 	prompt: CANVAS_PROMPT,

@@ -10,7 +10,9 @@ import type { Step } from "../types.js";
 export const sliceStoriesAi: Step = {
 	kind: "step",
 	label: "Slice Stories (AI)",
-	agent: "decomposer",
+	tools: ["read", "bash"],
+	model: "sonnet",
+	temperature: 0.2,
 	description:
 		"Codebase-aware vertical story slicing: EARS reqs → INVEST stories with file area mapping",
 	prompt:

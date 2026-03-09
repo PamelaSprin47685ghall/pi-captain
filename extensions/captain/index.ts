@@ -9,7 +9,7 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { CaptainState } from "./state.js";
-import { registerAgentTool } from "./tools/agent.js";
+
 import { registerListTool } from "./tools/list.js";
 import { registerLoadTool } from "./tools/load.js";
 import { registerRunTool } from "./tools/run.js";
@@ -44,7 +44,6 @@ export default function (pi: ExtensionAPI) {
 	}));
 
 	// ── Register Tools ─────────────────────────────────────────────────────
-	registerAgentTool(pi, state);
 	registerLoadTool(pi, state);
 	registerRunTool(pi, state, updateWidget, clearWidget);
 	registerStatusTool(pi, state);
@@ -76,13 +75,10 @@ export default function (pi: ExtensionAPI) {
 				const bar = "#".repeat(filled) + "-".repeat(10 - filled);
 
 				const pipelineCount = Object.keys(state.pipelines).length;
-				const agentCount = Object.keys(state.agents).length;
 				const left =
 					theme.fg("dim", ` ${model}`) +
 					theme.fg("muted", " · ") +
-					theme.fg("accent", `${pipelineCount} pipeline(s)`) +
-					theme.fg("muted", " · ") +
-					theme.fg("dim", `${agentCount} agent(s)`);
+					theme.fg("accent", `${pipelineCount} pipeline(s)`);
 				const right = theme.fg("dim", `[${bar}] ${Math.round(pct)}% `);
 				const pad = " ".repeat(
 					Math.max(1, width - visibleWidth(left) - visibleWidth(right)),

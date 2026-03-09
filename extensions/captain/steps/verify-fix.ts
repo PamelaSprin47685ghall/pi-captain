@@ -7,7 +7,7 @@ import type { Step } from "../types.js";
 export const verifyFix: Step = {
 	kind: "step",
 	label: "Verify Fix",
-	agent: "tester",
+	tools: ["read", "bash", "edit", "write", "grep", "find", "ls"],
 	description: "Confirm the fix resolves the bug and no regressions introduced",
 	prompt:
 		"You are a QA engineer verifying a bug fix.\n\n" +

@@ -8,7 +8,7 @@ import type { Step } from "../types.js";
 export const parsePrInput: Step = {
 	kind: "step",
 	label: "Parse PR Input",
-	agent: "builder",
+	tools: ["read", "bash", "edit", "write"],
 	description: "Parse 'owner/repo#N' into owner, repo, and PR number",
 	prompt:
 		"You have received a PR reference string. It is in $INPUT.\n\n" +
