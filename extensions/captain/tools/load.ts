@@ -6,8 +6,8 @@ import { describeRunnable } from "../utils/index.js";
 
 // ── Helpers extracted to keep execute() complexity low ────────────────────
 
-function listPresets(state: CaptainState, cwd: string) {
-	const presets = state.discoverPresets(cwd);
+function listPresets(state: CaptainState, _cwd: string) {
+	const presets = state.discoverPresets();
 	if (presets.length === 0) {
 		return {
 			content: [

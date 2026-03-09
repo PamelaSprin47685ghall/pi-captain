@@ -260,7 +260,7 @@ export function registerCommands(pi: ExtensionAPI, state: CaptainState) {
 		description:
 			"Show pipeline details (/captain <name>) or list all (/captain)",
 		getArgumentCompletions: (prefix) => {
-			const presets = state.discoverPresets(process.cwd());
+			const presets = state.discoverPresets();
 			const allNames = new Set([
 				...Object.keys(state.pipelines),
 				...presets.map((p) => p.name),
@@ -277,7 +277,7 @@ export function registerCommands(pi: ExtensionAPI, state: CaptainState) {
 		handler: async (args, ctx) => {
 			const name = args?.trim();
 			if (!name) {
-				const lines = state.buildPipelineListLines(ctx.cwd);
+				const lines = state.buildPipelineListLines();
 				ctx.ui.notify(
 					lines.length > 0
 						? lines.join("\n")
@@ -371,7 +371,7 @@ export function registerCommands(pi: ExtensionAPI, state: CaptainState) {
 		description:
 			"Load a pipeline preset (/captain-load <name>). No args to list available presets.",
 		getArgumentCompletions: (prefix) => {
-			const presets = state.discoverPresets(process.cwd());
+			const presets = state.discoverPresets();
 			return presets
 				.filter((p) => p.name.startsWith(prefix))
 				.map((p) => ({ value: p.name, label: `${p.name} (${p.source})` }));
@@ -379,7 +379,7 @@ export function registerCommands(pi: ExtensionAPI, state: CaptainState) {
 		handler: async (args, ctx) => {
 			const name = args?.trim();
 			if (!name) {
-				const presets = state.discoverPresets(ctx.cwd);
+				const presets = state.discoverPresets();
 				if (presets.length === 0) {
 					ctx.ui.notify(
 						"No pipeline presets found. Place .json files in .pi/pipelines/",

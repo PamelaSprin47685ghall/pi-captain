@@ -10,8 +10,6 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { CaptainState } from "./state.js";
 import { registerAgentTool } from "./tools/agent.js";
-import { registerDefineTool } from "./tools/define.js";
-import { registerGenerateTool } from "./tools/generate.js";
 import { registerListTool } from "./tools/list.js";
 import { registerLoadTool } from "./tools/load.js";
 import { registerRunTool } from "./tools/run.js";
@@ -47,12 +45,10 @@ export default function (pi: ExtensionAPI) {
 
 	// ── Register Tools ─────────────────────────────────────────────────────
 	registerAgentTool(pi, state);
-	registerDefineTool(pi, state);
 	registerLoadTool(pi, state);
 	registerRunTool(pi, state, updateWidget, clearWidget);
 	registerStatusTool(pi, state);
 	registerListTool(pi, state);
-	registerGenerateTool(pi, state);
 
 	// ── Register Slash Commands ────────────────────────────────────────────
 	registerCommands(pi, state);

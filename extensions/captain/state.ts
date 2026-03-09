@@ -1,14 +1,7 @@
 // ── CaptainState — All mutable runtime state and file I/O ─────────────────
 // Encapsulates pipelines, agents, and session reconstruction in one place.
 
-import {
-	existsSync,
-	mkdirSync,
-	readdirSync,
-	readFileSync,
-	statSync,
-	writeFileSync,
-} from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -147,50 +140,13 @@ export class CaptainState {
 		}
 	}
 
-	// ── Pipeline File I/O ─────────────────────────────────────────────────
-
-	savePipelineToFile(name: string, spec: Runnable, cwd: string): string {
-		const pipelinesDir = join(cwd, ".pi", "pipelines");
-		mkdirSync(pipelinesDir, { recursive: true });
-
-		const refNames = [...new Set(collectAgentRefs(spec))];
-		const referencedAgents: Record<string, Agent> = {};
-		for (const agentName of refNames) {
-			if (this.agents[agentName])
-				referencedAgents[agentName] = this.agents[agentName];
-		}
-
-		const filePath = join(pipelinesDir, `${name}.json`);
-		writeFileSync(
-			filePath,
-			JSON.stringify(
-				{ name, agents: referencedAgents, pipeline: spec },
-				null,
-				2,
-			),
-			"utf-8",
-		);
-		return filePath;
-	}
-
 	// ── Preset Discovery & Loading ────────────────────────────────────────
 
-	discoverPresets(
-		cwd: string,
-	): { name: string; source: "builtin" | "project" }[] {
-		const presets: { name: string; source: "builtin" | "project" }[] = [];
-		for (const name of Object.keys(this.builtinPresetMap)) {
-			presets.push({ name, source: "builtin" });
-		}
-		const projectDir = join(cwd, ".pi", "pipelines");
-		if (existsSync(projectDir)) {
-			for (const f of readdirSync(projectDir).filter((f) =>
-				f.endsWith(".json"),
-			)) {
-				presets.push({ name: basename(f, ".json"), source: "project" });
-			}
-		}
-		return presets;
+	discoverPresets(): { name: string; source: "builtin" }[] {
+		return Object.keys(this.builtinPresetMap).map((name) => ({
+			name,
+			source: "builtin",
+		}));
 	}
 
 	loadBuiltinPreset(name: string): {
@@ -241,9 +197,6 @@ export class CaptainState {
 		| undefined {
 		if (this.builtinPresetMap[name]) return this.loadBuiltinPreset(name);
 
-		const projectFile = join(cwd, ".pi", "pipelines", `${name}.json`);
-		if (existsSync(projectFile)) return this.loadPipelineFile(projectFile);
-
 		const candidate = resolve(cwd, name);
 		const filePath = existsSync(candidate)
 			? candidate
@@ -282,14 +235,13 @@ export class CaptainState {
 
 	// ── Pipeline List Helpers ─────────────────────────────────────────────
 
-	buildPipelineListLines(cwd: string): string[] {
+	buildPipelineListLines(): string[] {
 		const names = Object.keys(this.pipelines);
 		const lines = names.map((name) => {
 			const p = this.pipelines[name];
 			return `• ${name} (loaded)\n${describeRunnable(p.spec, 2)}`;
 		});
 		this.appendUnloadedBuiltins(lines);
-		this.appendUnloadedProjectPresets(lines, cwd);
 		return lines;
 	}
 
@@ -301,17 +253,5 @@ export class CaptainState {
 		lines.push("");
 		lines.push("Available presets (use captain_load to activate):");
 		for (const name of unloaded) lines.push(`  • ${name} (builtin)`);
-	}
-
-	private appendUnloadedProjectPresets(lines: string[], cwd: string): void {
-		const projectDir = join(cwd, ".pi", "pipelines");
-		if (!existsSync(projectDir)) return;
-		const unloadedJson = readdirSync(projectDir)
-			.filter((f) => f.endsWith(".json"))
-			.map((f) => basename(f, ".json"))
-			.filter((n) => !this.pipelines[n]);
-		if (unloadedJson.length === 0) return;
-		lines.push("  Project presets:");
-		for (const name of unloadedJson) lines.push(`  • ${name} (project)`);
 	}
 }
