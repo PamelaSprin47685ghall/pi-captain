@@ -1,7 +1,7 @@
 // ── Step: Diagnose Bug ────────────────────────────────────────────────────
 // Traces the root cause using reproduction output and source analysis
 
-import { assert, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -27,9 +27,10 @@ export const diagnoseBug: Step = {
 	description: "Trace the root cause of the reproduced bug",
 	prompt,
 	// Gate: diagnosis must identify a specific file
-	gate: assert(
-		"output.includes('/') || output.includes('.ts') || output.includes('.js')",
-	),
+	gate: ({ output }) =>
+		output.includes("/") || output.includes(".ts") || output.includes(".js")
+			? true
+			: "Diagnosis must reference a specific file path",
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

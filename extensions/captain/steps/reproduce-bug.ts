@@ -1,7 +1,7 @@
 // ── Step: Reproduce Bug ───────────────────────────────────────────────────
 // Attempts to reproduce the reported bug with a minimal test case
 
-import { assert, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -25,9 +25,14 @@ export const reproduceBug: Step = {
 	description: "Create a minimal reproduction of the reported bug",
 	prompt,
 	// Gate: output must include reproduction evidence
-	gate: assert(
-		"output.toLowerCase().includes('error') || output.toLowerCase().includes('fail') || output.toLowerCase().includes('reproduce')",
-	),
+	gate: ({ output }) => {
+		const lo = output.toLowerCase();
+		return lo.includes("error") ||
+			lo.includes("fail") ||
+			lo.includes("reproduce")
+			? true
+			: "Reproduction must show an error, failure, or explicit 'reproduce' evidence";
+	},
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

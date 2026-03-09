@@ -1,7 +1,8 @@
 // ── Gate Runner ────────────────────────────────────────────────────────────
-// A gate is just a function: (ctx: GateCtx) => boolean | Promise<boolean>.
-// runGate wraps the call to produce a { passed, reason } result for the
-// executor to display.  All gate logic lives in gates/presets.ts.
+// A gate is: (ctx: GateCtx) => string | true | Promise<string | true>
+//   true   → passed
+//   string → failed — the string IS the reason
+//   throw  → failed — error.message becomes the reason
 
 import type { Gate, GateCtx } from "./types.js";
 
@@ -13,14 +14,14 @@ export interface GateResult {
 /** Run a gate and return a structured { passed, reason } result. */
 export async function runGate(gate: Gate, ctx: GateCtx): Promise<GateResult> {
 	try {
-		const passed = await gate(ctx);
-		return passed
-			? { passed: true, reason: "Gate passed" }
-			: { passed: false, reason: "Gate returned false" };
+		const result = await gate(ctx);
+		return result === true
+			? { passed: true, reason: "passed" }
+			: { passed: false, reason: result };
 	} catch (err) {
 		return {
 			passed: false,
-			reason: `Gate error: ${err instanceof Error ? err.message : String(err)}`,
+			reason: err instanceof Error ? err.message : String(err),
 		};
 	}
 }

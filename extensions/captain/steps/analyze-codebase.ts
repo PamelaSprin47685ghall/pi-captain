@@ -1,7 +1,7 @@
 // ── Step: Analyze Codebase ─────────────────────────────────────────────────
 // Deep analysis of code structure, complexity, and refactoring opportunities
 
-import { outputMinLength, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -25,7 +25,8 @@ export const analyzeCodebase: Step = {
 	description: "Analyze code structure and identify refactoring opportunities",
 	prompt,
 	// Gate: analysis must be substantive (at least 200 chars)
-	gate: outputMinLength(200),
+	gate: ({ output }) =>
+		output.length > 200 ? true : "Analysis output is too short (< 200 chars)",
 	onFail: retry(2),
 	transform: { kind: "full" },
 };

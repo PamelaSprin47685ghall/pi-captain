@@ -2,7 +2,7 @@
 // Stage 1 of spec-tdd: Architect analyzes codebase and produces a detailed,
 // testable technical specification from the raw requirement.
 
-import { allOf, llmFast, outputIncludesCI, retry } from "../gates/index.js";
+import { allOf, llmFast, retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -63,9 +63,17 @@ export const writeSpec: Step = {
 		"Analyze the requirement and codebase, then produce a detailed technical specification",
 	prompt,
 	gate: allOf(
-		outputIncludesCI("acceptance criteria"),
-		outputIncludesCI("public api"),
-		outputIncludesCI("test strategy"),
+		({ output }) => {
+			const lo = output.toLowerCase();
+			const missing = [
+				"acceptance criteria",
+				"public api",
+				"test strategy",
+			].filter((s) => !lo.includes(s));
+			return missing.length === 0
+				? true
+				: `Spec missing sections: ${missing.join(", ")}`;
+		},
 		llmFast(
 			"Does this technical spec contain: (1) clear testable requirements, " +
 				"(2) specific file paths, (3) public API signatures, (4) acceptance criteria, " +

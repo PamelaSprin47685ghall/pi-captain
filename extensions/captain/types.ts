@@ -29,10 +29,10 @@ export interface GateCtx {
 
 /**
  * A gate is a plain function: receives context (including step output) and
- * returns true to pass or false to fail.  Any async operation is allowed.
- * Throw to fail with a descriptive error message.
+ * returns true to pass, or a string describing why it failed.
+ * Async gates are allowed. Throwing is also treated as a failure.
  */
-export type Gate = (ctx: GateCtx) => boolean | Promise<boolean>;
+export type Gate = (ctx: GateCtx) => string | true | Promise<string | true>;
 
 /** Failure handling strategy */
 export type OnFail =

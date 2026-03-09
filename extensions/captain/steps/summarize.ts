@@ -1,7 +1,7 @@
 // ── Step: Summarize ───────────────────────────────────────────────────────
 // Produces a clear, structured summary with actionable insights from research
 
-import { outputMinLength, retry } from "../gates/index.js";
+import { retry } from "../gates/index.js";
 import type { Step } from "../types.js";
 
 const prompt = `
@@ -19,7 +19,8 @@ export const summarize: Step = {
 	tools: ["read", "bash"],
 	description: "Produce a clear summary",
 	prompt,
-	gate: outputMinLength(100),
+	gate: ({ output }) =>
+		output.length > 100 ? true : "Summary is too short (< 100 chars)",
 	onFail: retry(2),
 	transform: { kind: "full" },
 };
