@@ -229,16 +229,26 @@ const fallbackDemo: Step = {
 	transform: full,
 };
 
-const retryGussePassword: Step = {
+// ─────────────────────────────────────────────────────────────────────────
+// Step 9 — Retry demo: gate fails twice, passes on the 3rd attempt
+//           Closure counter — no temp files needed
+// ─────────────────────────────────────────────────────────────────────────
+
+let retryCount = 0;
+
+const retryDemo: Step = {
 	kind: "step",
-	label: "find password",
-	model: "flash",
-	prompt: "find the password",
-	gate: ({ output }) => output === "qsgawkdjalkwjdlakwd" || "wrong pass",
-	onFail: retry(2),
-	transform: {
-		kind: "full",
+	label: "retry-demo",
+	model: flash,
+	tools: noTools,
+	prompt: "Say exactly: hello",
+	gate: () => {
+		retryCount++;
+		if (retryCount < 3) return `Attempt ${retryCount}/3 — forcing retry`;
+		return true;
 	},
+	onFail: retry(2),
+	transform: full,
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -256,7 +266,7 @@ export const pipeline: Runnable = {
 		formatStep, //  6️⃣  JSON gate + extract transform
 		warnDemo, //  7️⃣  warn onFail demo
 		fallbackDemo, //  8️⃣  fallback onFail demo
-		retryGussePassword, // 9 retry
+		retryDemo, //  9️⃣  closure-counter retry demo
 	],
 	gate: noGate,
 } satisfies Sequential;
