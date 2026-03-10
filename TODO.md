@@ -2,26 +2,6 @@
 
 ---
 
-## 🏗️ Architecture & Code Quality
-
-- [x] **Split `index.ts`** — 2,111-line god file; break into focused modules (`tools/`, `ui/`, `state/`)
-- [x] **Remove or enforce `maxTurns` / `maxTokens`** — currently declared on `Step` but never enforced; enforce via `pi --max-turns` / `pi --max-tokens` or remove to avoid misleading users
-- [x] **Audit `OnFail` coverage in executor** — `retryWithDelay` and `warn` are defined in `types.ts` and surfaced in the generator; verify `executor.ts` fully handles them vs. silently falling back
-
----
-
-## 🧪 Testing — There Are None
-
-- [x] Unit tests for `utils/runnable.ts` — 32 tests covering collectAgentRefs, collectStepLabels, findStepByLabel, statusIcon, containerGateInfo, describeRunnable
-- [x] Unit tests for `utils/frontmatter.ts` — 12 tests covering all parsing cases
-- [x] Unit tests for `gates.ts` — one test per gate type (none, assert, regex, json, command, file, dir, env, user, multi, timeout, llm)
-- [x] Unit tests for `merge.ts` — one test per merge strategy (concat, awaitAll, firstPass, vote, rank, edge cases)
-- [x] Integration tests for `executor.ts` — sequential, parallel, pool, gate/onFail, transform, lifecycle callbacks (23 tests, pi SDK fully mocked)
-- [x] Mock `pi` subprocess for step execution tests — `mock.module("@mariozechner/pi-coding-agent")` intercepts `createAgentSession`; `mock.module("./worktree.js")` stubs git ops
-- [x] Add CI pipeline — `.github/workflows/ci.yml` runs `biome check` + `bun test` on every push/PR
-
----
-
 ## ⚡ Missing Features
 
 - [ ] **Pipeline resume / checkpointing** — persist step results so a failed pipeline can be resumed from where it left off instead of restarting from scratch

@@ -3,10 +3,9 @@
 // Produces a structured verdict with severity-rated issues.
 // On failure (critical issues found), falls back to review-fix step.
 
-import { allOf, bunTest, fallback, llmFast, regexCI } from "../gates/index.js";
+import { allOf, bunTest, llmFast, regexCI, retry } from "../gates/index.js";
 import { full } from "../transforms/presets.js";
 import type { Step } from "../types.js";
-import { fixReviewIssues } from "./fix-review-issues.js";
 
 const prompt = `
 You are the Code Reviewer. Conduct a thorough code review of the implementation.
@@ -80,8 +79,7 @@ export const reviewCode: Step = {
 				"Rate thoroughness 0-1. Threshold: 0.7",
 		),
 	),
-	// Fallback: if review finds critical issues, hand off to fixer
-	onFail: fallback(fixReviewIssues),
+	onFail: retry(2),
 	transform: full,
 	maxTurns: 15,
 };

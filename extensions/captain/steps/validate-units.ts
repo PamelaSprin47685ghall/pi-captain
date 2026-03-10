@@ -2,10 +2,9 @@
 // Stage 4 of shredder: Flash dry-run — confirm each unit can be executed
 // in a single pass with no ambiguity. Falls back to re-shred on failure.
 
-import { fallback, regexCI } from "../gates/index.js";
+import { regexCI, retry } from "../gates/index.js";
 import { full } from "../transforms/presets.js";
 import type { Step } from "../types.js";
-import { reShred } from "./re-shred.js";
 
 const prompt = `
 You are the Validator. You are a small, fast model.
@@ -49,6 +48,6 @@ export const validateUnits: Step = {
 		"Flash dry-run: confirm each unit can be executed in a single pass with no ambiguity",
 	prompt,
 	gate: regexCI("all.validated.*yes"),
-	onFail: fallback(reShred),
+	onFail: retry(2),
 	transform: full,
 };
