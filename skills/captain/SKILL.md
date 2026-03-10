@@ -42,6 +42,7 @@ Gates and onFail handlers are **plain functions** — no JSON encoding needed.
 import { retry, skip, warn } from "<captain>/gates/on-fail.js";
 import { bunTest, command, regexCI, user } from "<captain>/gates/presets.js";
 import { llmFast } from "<captain>/gates/llm.js";
+import { full, summarize } from "<captain>/transforms/presets.js";
 import type { Gate, OnFail, Runnable, Step } from "<captain>/types.js";
 
 const research: Step = {
@@ -52,7 +53,7 @@ const research: Step = {
   prompt: "Research the following topic thoroughly:\n$ORIGINAL",
   gate: undefined,
   onFail: skip,
-  transform: { kind: "full" },
+  transform: full,
 };
 
 const implement: Step = {
@@ -63,7 +64,7 @@ const implement: Step = {
   prompt: "Based on this research:\n$INPUT\n\nImplement: $ORIGINAL",
   gate: bunTest,                // runs `bun test`, passes on exit 0
   onFail: retry(3),
-  transform: { kind: "full" },
+  transform: full,
 };
 
 const review: Step = {
@@ -75,7 +76,7 @@ const review: Step = {
   prompt: "Review this implementation:\n$INPUT\n\nOriginal: $ORIGINAL",
   gate: user,                   // requires human approval in interactive UI
   onFail: skip,
-  transform: { kind: "summarize" },
+  transform: summarize(),
 };
 
 export const pipeline: Runnable = {

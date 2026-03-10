@@ -250,11 +250,12 @@ Validates a single agent invocation. On retry, re-runs that one step with failur
 const buildStep: Step = {
   kind: "step",
   label: "Build",
-  agent: "coder",
+  model: "sonnet",
+  tools: ["read", "bash", "edit", "write"],
   prompt: "...",
   gate: allOf(bunTest, bunTypecheck),   // ← both must pass
   onFail: retry(2),
-  transform: { kind: "full" },
+  transform: full,
 };
 ```
 

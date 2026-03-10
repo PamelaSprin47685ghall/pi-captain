@@ -22,7 +22,7 @@ pi install git:github.com/Pierre-Mike/pi-captain
 | `captain_run` | Execute a pipeline with input |
 | `captain_status` | Check pipeline progress and results |
 | `captain_list` | List all defined pipelines |
-| `captain_load` | Load a builtin pipeline preset |
+| `captain_load` | Load a builtin pipeline preset or `.ts` pipeline file |
 | `captain_generate` | Auto-generate a pipeline from a goal description |
 
 ### Builtin Pipeline Presets
@@ -32,12 +32,73 @@ pi install git:github.com/Pierre-Mike/pi-captain
 | `captain:shredder` | Clarify → decompose → shred to atomic units → validate → resolve deps → generate pipeline spec → Obsidian canvas |
 | `captain:spec-tdd` | Spec → TDD red → TDD green + docs (parallel) → review → PR |
 | `captain:requirements-gathering` | Explore → deep-dive → challenge → synthesize REQUIREMENTS.md |
+| `captain:github-pr-review` | Fetch PR metadata → review each file → synthesize verdict |
+| `captain:showcase` | Demonstrates gates, retries, closures, and transforms |
+
+---
+
+## Pipelines as TypeScript Files
+
+The preferred way to write pipelines is as `.ts` files that export a `pipeline` const of type `Runnable`. Gates, OnFail handlers, and Transforms are **plain functions** — no JSON encoding needed.
+
+```ts
+// my-pipeline.ts
+import { retry, skip, warn } from "<captain>/gates/on-fail.js";
+import { bunTest, command, regexCI, user } from "<captain>/gates/presets.js";
+import { llmFast } from "<captain>/gates/llm.js";
+import { full, summarize } from "<captain>/transforms/presets.js";
+import type { Runnable, Step } from "<captain>/types.js";
+
+const research: Step = {
+  kind: "step",
+  label: "Research",
+  model: "sonnet",
+  tools: ["read", "bash"],
+  prompt: "Research the following topic thoroughly:\n$ORIGINAL",
+  gate: undefined,
+  onFail: skip,
+  transform: full,
+};
+
+const implement: Step = {
+  kind: "step",
+  label: "Implement",
+  model: "sonnet",
+  tools: ["read", "bash", "edit", "write"],
+  prompt: "Based on this research:\n$INPUT\n\nImplement: $ORIGINAL",
+  gate: bunTest,           // runs `bun test`, passes on exit 0
+  onFail: retry(3),
+  transform: full,
+};
+
+const review: Step = {
+  kind: "step",
+  label: "Review",
+  model: "flash",
+  tools: ["read", "bash"],
+  temperature: 0.3,
+  prompt: "Review this implementation:\n$INPUT\n\nOriginal: $ORIGINAL",
+  gate: user,              // human approval in interactive UI
+  onFail: skip,
+  transform: summarize(),
+};
+
+export const pipeline: Runnable = {
+  kind: "sequential",
+  steps: [research, implement, review],
+};
+```
+
+Load and run:
+
+```
+captain_load: action="load", name="./my-pipeline.ts"
+captain_run: name="my-pipeline", input="Build a REST API for user management"
+```
 
 ---
 
 ## Type Reference
-
-This section is the authoritative schema for the pipeline spec. Every field is described with its type, whether it is required or optional, and its default value.
 
 ---
 
@@ -79,188 +140,242 @@ Each step runs as an in-process pi SDK session. All config is declared inline on
   description?: string,            // optional — longer description (defaults to label)
 
   // ── Lifecycle ─────────────────────────────────────────────────────────
-  gate: Gate,                      // required — validation after this step runs
-  onFail: OnFail,                  // required — what to do if gate fails or step errors
+  gate?: Gate,                     // optional — validation after this step runs
+  onFail?: OnFail,                 // optional — what to do if gate fails or step errors
   transform: Transform,            // required — how to pass output to the next step
 }
 ```
 
-**Example step:**
-```json
-{
-  "kind": "step",
-  "label": "Analyze codebase",
-  "model": "flash",
-  "tools": ["read", "bash"],
-  "prompt": "Analyze $ORIGINAL and summarize the architecture.",
-  "gate": { "type": "none" },
-  "onFail": { "action": "skip" },
-  "transform": { "kind": "full" }
+**Example step (TypeScript):**
+```ts
+import { bunTest } from "<captain>/gates/presets.js";
+import { retry } from "<captain>/gates/on-fail.js";
+import { full } from "<captain>/transforms/presets.js";
+
+const buildStep: Step = {
+  kind: "step",
+  label: "Build & Test",
+  model: "sonnet",
+  tools: ["read", "bash", "edit", "write"],
+  prompt: "Implement $ORIGINAL. Make all tests pass.",
+  gate: bunTest,
+  onFail: retry(3),
+  transform: full,
+};
+```
+
+---
+
+### `Gate` — plain validation function
+
+A gate is a **plain function** that receives the step output and optional side-effect context.  
+Return `true` to pass, or a `string` describing why it failed. Throwing is also treated as a failure.
+
+```ts
+type Gate = (params: {
+  output: string;
+  ctx?: GateCtx;
+}) => true | string | Promise<true | string>;
+```
+
+**Inline gates:**
+```ts
+// Simple content check
+gate: ({ output }) => output.includes("DONE") ? true : 'Output must contain "DONE"'
+
+// JSON validity check
+gate: ({ output }) => {
+  try { JSON.parse(output.trim()); return true; }
+  catch { return "Output is not valid JSON"; }
+}
+
+// Shell command via ctx
+gate: async ({ ctx }) => {
+  const { code, stderr } = await ctx!.exec("bash", ["-c", "bun test"]);
+  return code === 0 ? true : `Tests failed: ${stderr.slice(0, 200)}`;
+}
+
+// Stateful gate using closure
+let attempts = 0;
+gate: ({ output }) => {
+  attempts++;
+  return attempts >= 3 ? true : `Need 3 attempts, got ${attempts}`;
 }
 ```
 
-**Step with temperature:**
-```json
-{
-  "kind": "step",
-  "label": "Implement feature",
-  "model": "sonnet",
-  "tools": ["read", "bash", "edit", "write"],
-  "temperature": 0.2,
-  "prompt": "Implement: $ORIGINAL\n\nContext:\n$INPUT",
-  "gate": { "type": "command", "value": "bun test" },
-  "onFail": { "action": "retry", "max": 3 },
-  "transform": { "kind": "full" }
+**Gate presets** (import from `gates/presets.js`):
+
+| Export | Description |
+|--------|-------------|
+| `bunTest` | `bun test` exits 0 |
+| `bunTypecheck` | `bunx tsc --noEmit` exits 0 |
+| `bunLint` | `bun run lint` exits 0 |
+| `command(cmd)` | Any shell command, exit 0 = pass |
+| `commandAll(...cmds)` | All shell commands must pass (joined with `&&`) |
+| `file(path)` | File must exist |
+| `dir(path)` | Directory must exist |
+| `regex(pattern, flags?)` | Output must match regex |
+| `regexCI(pattern)` | Case-insensitive regex match |
+| `regexExcludes(pattern)` | Output must NOT match regex |
+| `outputIncludes(s)` | Output contains string (case-sensitive) |
+| `outputIncludesCI(s)` | Output contains string (case-insensitive) |
+| `outputMinLength(n)` | Output at least N characters |
+| `jsonValid` | Output is valid JSON |
+| `jsonHasKeys(...keys)` | Valid JSON with required top-level keys |
+| `httpOk(url)` | GET returns 200 |
+| `httpStatus(url, status, method?)` | Specific HTTP status |
+| `portListening(port, host?)` | TCP port is open |
+| `dockerRunning(name)` | Docker container is running |
+| `envSet(name)` | Env var is set and non-empty |
+| `envEquals(name, value)` | Env var equals a specific value |
+| `gitClean` | Working directory has no uncommitted changes |
+| `gitBranch(name)` | Current branch matches name |
+| `noConflicts` | No merge conflict markers in source files |
+| `allOf(...gates)` | All sub-gates must pass (AND) |
+| `anyOf(...gates)` | At least one must pass (OR) |
+| `withTimeout(gate, ms)` | Fail if gate takes longer than ms |
+| `user` | Human approval via UI confirm dialog |
+| `none` | Always passes |
+| `testAndTypecheck` | `bun test && bunx tsc --noEmit` |
+| `fullCI` | test + typecheck + lint |
+| `prodReady` | tests + typecheck + build artifact |
+| `distExists` | `dist/index.js` exists |
+
+**LLM gate** (import from `gates/llm.js`):
+
+| Export | Description |
+|--------|-------------|
+| `llmFast(prompt, threshold?)` | LLM evaluates output quality (0–1 threshold, default 0.7) |
+
+```ts
+import { llmFast } from "<captain>/gates/llm.js";
+gate: llmFast("Is this implementation production-ready?", 0.8)
+```
+
+---
+
+### `OnFail` — plain failure-handling function
+
+An `OnFail` is a **plain function** that receives failure context and returns what to do next.
+
+```ts
+type OnFail = (ctx: OnFailCtx) => OnFailResult | Promise<OnFailResult>;
+
+interface OnFailCtx {
+  reason: string;      // Gate failure reason
+  retryCount: number;  // Retries already attempted (0 on first failure)
+  stepCount: number;   // Total times step has run (retryCount + 1)
+  output: string;      // Last output before failure
+}
+
+type OnFailResult =
+  | { action: "retry" }
+  | { action: "fail" }
+  | { action: "skip" }
+  | { action: "warn" }
+  | { action: "fallback"; step: Step };
+```
+
+**OnFail presets** (import from `gates/on-fail.js`):
+
+| Export | Description |
+|--------|-------------|
+| `retry(max?)` | Re-run up to N times (default 3), then fail |
+| `retryWithDelay(max, delayMs)` | Retry with pause between attempts |
+| `skip` | Mark as skipped, pass empty string downstream |
+| `warn` | Log warning, treat as passed |
+| `fallback(step)` | Run an alternative step instead |
+
+**Custom inline:**
+```ts
+// Retry twice, then warn
+onFail: ({ retryCount }) => retryCount < 2 ? { action: "retry" } : { action: "warn" }
+```
+
+**When to use `warn` vs `skip`:**
+- **`warn`**: Gate failed but output is still useful — pass it through. Good for advisory gates.
+- **`skip`**: Gate failed and output is unreliable — discard it. Good for mandatory validation.
+
+---
+
+### `Transform` — plain output-shaping function
+
+A transform is a **plain function** that maps one step's output to the next step's input.
+
+```ts
+type Transform = (params: {
+  output: string;    // Raw output produced by the step
+  original: string;  // The very first pipeline input ($ORIGINAL)
+  ctx: TransformCtx; // Side-effect helpers (shell, LLM, …)
+}) => string | Promise<string>;
+```
+
+**Transform presets** (import from `transforms/presets.js`):
+
+| Export | Description |
+|--------|-------------|
+| `full` | Pass entire output unchanged (default) |
+| `extract(key)` | Parse JSON and extract a top-level key |
+| `summarize()` | Ask LLM to summarize in 2–3 sentences |
+
+**Inline transforms:**
+```ts
+// Trim whitespace
+transform: ({ output }) => output.trim()
+
+// Pull JSON key with fallback
+transform: ({ output }) => {
+  try { return JSON.parse(output).result; }
+  catch { return output; }
+}
+
+// Shell post-processing
+transform: async ({ output, ctx }) => {
+  const { stdout } = await ctx.exec("jq", ["-r", ".items[]"]);
+  return stdout || output;
 }
 ```
 
 ---
 
-### `Sequential` — ordered chain
-
-Steps run one after another. The output of each step becomes `$INPUT` for the next.
+### `Sequential` — chain steps via `$INPUT`
 
 ```ts
 {
-  kind: "sequential",              // required — literal "sequential"
-  steps: Runnable[],               // required — non-empty array of any Runnable
-  gate?: Gate,                     // optional — validates the FINAL output of the whole sequence
-  onFail?: OnFail,                 // optional — retry = re-run the entire sequence from scratch
+  kind: "sequential",
+  steps: Runnable[],      // ordered list of steps/sub-pipelines
+  gate?: Gate,            // validates final output of the sequence
+  onFail?: OnFail,        // retry = re-run entire sequence from scratch
+  transform?: Transform,  // applied to final output after gate passes
 }
 ```
-
-```json
-{
-  "kind": "sequential",
-  "steps": [
-    { "kind": "step", "label": "Plan", "tools": ["read","bash"], "..." : "..." },
-    { "kind": "step", "label": "Implement", "tools": ["read","bash","edit","write"], "..." : "..." },
-    { "kind": "step", "label": "Test", "tools": ["read","bash"], "..." : "..." }
-  ],
-  "gate": { "type": "command", "value": "bun test" },
-  "onFail": { "action": "retry", "max": 2 }
-}
-```
-
----
-
-### `Pool` — same step, N times in parallel
-
-Runs ONE runnable `count` times simultaneously (each in its own git worktree for isolation), then merges results.
-
-```ts
-{
-  kind: "pool",                    // required — literal "pool"
-  step: Runnable,                  // required — the runnable to replicate
-  count: number,                   // required — number of parallel instances (>= 1)
-  merge: { strategy: MergeStrategy }, // required — how to combine the N outputs
-  gate?: Gate,                     // optional — validates the merged output
-  onFail?: OnFail,                 // optional — retry = re-run all N branches + re-merge
-}
-```
-
-```json
-{
-  "kind": "pool",
-  "step": {
-    "kind": "step",
-    "label": "Generate solution",
-    "model": "sonnet",
-    "tools": ["read", "bash", "edit", "write"],
-    "prompt": "Implement $ORIGINAL",
-    "gate": { "type": "none" },
-    "onFail": { "action": "skip" },
-    "transform": { "kind": "full" }
-  },
-  "count": 3,
-  "merge": { "strategy": "rank" }
-}
-```
-
----
 
 ### `Parallel` — different steps concurrently
 
-Runs DIFFERENT runnables at the same time (each in its own git worktree), then merges results.
-
 ```ts
 {
-  kind: "parallel",                // required — literal "parallel"
-  steps: Runnable[],               // required — non-empty array, each runs concurrently
-  merge: { strategy: MergeStrategy }, // required — how to combine all outputs
-  gate?: Gate,                     // optional — validates the merged output
-  onFail?: OnFail,                 // optional — retry = re-run all branches + re-merge
+  kind: "parallel",
+  steps: Runnable[],                 // each runs concurrently (own git worktree)
+  merge: { strategy: MergeStrategy },
+  gate?: Gate,
+  onFail?: OnFail,
+  transform?: Transform,
 }
 ```
 
-```json
+### `Pool` — same step × N
+
+```ts
 {
-  "kind": "parallel",
-  "steps": [
-    { "kind": "step", "label": "Security review", "tools": ["read","bash","grep","find","ls"], "..." : "..." },
-    { "kind": "step", "label": "Performance review", "tools": ["read","bash"], "..." : "..." }
-  ],
-  "merge": { "strategy": "concat" }
+  kind: "pool",
+  step: Runnable,                    // replicated N times
+  count: number,
+  merge: { strategy: MergeStrategy },
+  gate?: Gate,
+  onFail?: OnFail,
+  transform?: Transform,
 }
 ```
-
----
-
-### `Gate` — output validation
-
-A gate runs after a step completes. If it fails, `onFail` is triggered.
-
-```ts
-type Gate =
-  | { type: "none" }
-  | { type: "user"; value: true }
-  | { type: "command"; value: string }
-  //   Exit code 0 = pass. Examples:
-  //     { type: "command", value: "bun test" }
-  //     { type: "command", value: "bun test && bunx tsc --noEmit" }
-  | { type: "file"; value: string }
-  | { type: "dir"; value: string }
-  | { type: "assert"; fn: string }
-  //   `fn` is a JS expression; `output` is the step's output string.
-  //   Example: { type: "assert", fn: "output.includes('LGTM')" }
-  | { type: "regex"; pattern: string; flags?: string }
-  | { type: "json" }
-  | { type: "json"; schema: string }
-  //   Comma-separated top-level keys that must be present.
-  | { type: "http"; url: string; method?: string; expectedStatus?: number }
-  | { type: "env"; name: string; value?: string }
-  | { type: "llm"; prompt: string; model?: string; threshold?: number }
-  //   Asks an LLM to evaluate output against `prompt`. Passes if score >= threshold (default 0.7).
-  //   Example: { type: "llm", prompt: "Is the output well documented?", threshold: 0.8 }
-  | { type: "timeout"; gate: Gate; ms: number }
-  | { type: "multi"; mode: "all" | "any"; gates: Gate[] }
-```
-
----
-
-### `OnFail` — failure handling
-
-```ts
-type OnFail =
-  | { action: "retry"; max?: number }
-  | { action: "retryWithDelay"; max?: number; delayMs: number }
-  | { action: "skip" }
-  | { action: "warn" }
-  | { action: "fallback"; step: Step }
-```
-
----
-
-### `Transform` — output shaping
-
-```ts
-type Transform =
-  | { kind: "full" }                        // pass entire raw output
-  | { kind: "extract"; key: string }        // parse JSON, extract key
-  | { kind: "summarize" }                   // LLM-summarize before passing downstream
-```
-
----
 
 ### `MergeStrategy` — combining parallel/pool outputs
 
@@ -274,107 +389,83 @@ type Transform =
 
 ---
 
-## Complete Pipeline Example
-
-```json
-{
-  "pipeline": {
-    "kind": "sequential",
-    "steps": [
-      {
-        "kind": "step",
-        "label": "Explore codebase",
-        "model": "flash",
-        "tools": ["read", "bash", "grep", "find", "ls"],
-        "prompt": "Explore the codebase and understand how to implement: $ORIGINAL. Identify relevant files, patterns, and constraints.",
-        "gate": { "type": "none" },
-        "onFail": { "action": "skip" },
-        "transform": { "kind": "full" }
-      },
-      {
-        "kind": "parallel",
-        "steps": [
-          {
-            "kind": "step",
-            "label": "Write tests",
-            "model": "sonnet",
-            "tools": ["read", "bash", "edit", "write", "grep", "find", "ls"],
-            "temperature": 0.2,
-            "prompt": "Based on this analysis:\n$INPUT\n\nWrite failing tests for: $ORIGINAL",
-            "gate": { "type": "command", "value": "bun test --bail 2>&1 | grep -q 'fail'" },
-            "onFail": { "action": "retry", "max": 2 },
-            "transform": { "kind": "full" }
-          },
-          {
-            "kind": "step",
-            "label": "Write docs",
-            "model": "sonnet",
-            "tools": ["read", "bash", "edit", "write", "grep", "find", "ls"],
-            "prompt": "Based on this analysis:\n$INPUT\n\nDraft documentation for: $ORIGINAL",
-            "gate": { "type": "none" },
-            "onFail": { "action": "warn" },
-            "transform": { "kind": "full" }
-          }
-        ],
-        "merge": { "strategy": "concat" }
-      },
-      {
-        "kind": "step",
-        "label": "Implement",
-        "model": "sonnet",
-        "tools": ["read", "bash", "edit", "write"],
-        "temperature": 0.2,
-        "prompt": "Context:\n$INPUT\n\nImplement: $ORIGINAL\nMake all tests pass.",
-        "gate": { "type": "command", "value": "bun test" },
-        "onFail": { "action": "retry", "max": 3 },
-        "transform": { "kind": "full" }
-      },
-      {
-        "kind": "step",
-        "label": "Review",
-        "model": "flash",
-        "tools": ["read", "bash", "grep", "find", "ls"],
-        "temperature": 0.3,
-        "prompt": "Review the implementation for $ORIGINAL. Focus on correctness, security, and maintainability.",
-        "gate": {
-          "type": "llm",
-          "prompt": "Does the review indicate the implementation is ready for production?",
-          "threshold": 0.8
-        },
-        "onFail": { "action": "retry", "max": 1 },
-        "transform": { "kind": "summarize" }
-      }
-    ]
-  }
-}
-```
-
----
-
-## Gate Factories (TypeScript pipelines)
-
-When building pipelines as `.ts` modules, import parameterized gate factories from `gates/index.js`:
+## Complete Pipeline Example (TypeScript)
 
 ```ts
-import { command, outputMinLength, bunTest, none, retry, skip, fallback } from "../gates/index.js";
+// research-and-build.ts
+import { retry, skip, warn } from "<captain>/gates/on-fail.js";
+import { bunTest, allOf, outputMinLength, user } from "<captain>/gates/presets.js";
+import { llmFast } from "<captain>/gates/llm.js";
+import { full, summarize } from "<captain>/transforms/presets.js";
+import type { Runnable } from "<captain>/types.js";
+
+export const pipeline: Runnable = {
+  kind: "sequential",
+  steps: [
+    {
+      kind: "step",
+      label: "Explore codebase",
+      model: "flash",
+      tools: ["read", "bash"],
+      prompt: "Explore the codebase and understand how to implement: $ORIGINAL. Identify relevant files, patterns, and constraints.",
+      gate: outputMinLength(100),
+      onFail: skip,
+      transform: full,
+    },
+    {
+      kind: "parallel",
+      steps: [
+        {
+          kind: "step",
+          label: "Write tests",
+          model: "sonnet",
+          tools: ["read", "bash", "edit", "write"],
+          temperature: 0.2,
+          prompt: "Based on this analysis:\n$INPUT\n\nWrite failing tests for: $ORIGINAL",
+          gate: async ({ ctx }) => {
+            const { code } = await ctx!.exec("bash", ["-c", "bun test 2>&1 | grep -q fail"]);
+            return code === 0 ? true : "Tests should fail (red phase)";
+          },
+          onFail: retry(2),
+          transform: full,
+        },
+        {
+          kind: "step",
+          label: "Write docs",
+          model: "sonnet",
+          tools: ["read", "bash", "edit", "write"],
+          prompt: "Based on this analysis:\n$INPUT\n\nDraft documentation for: $ORIGINAL",
+          onFail: warn,
+          transform: full,
+        },
+      ],
+      merge: { strategy: "concat" },
+    },
+    {
+      kind: "step",
+      label: "Implement",
+      model: "sonnet",
+      tools: ["read", "bash", "edit", "write"],
+      temperature: 0.2,
+      prompt: "Context:\n$INPUT\n\nImplement: $ORIGINAL\nMake all tests pass.",
+      gate: bunTest,
+      onFail: retry(3),
+      transform: full,
+    },
+    {
+      kind: "step",
+      label: "Review",
+      model: "flash",
+      tools: ["read", "bash"],
+      temperature: 0.3,
+      prompt: "Review the implementation for $ORIGINAL. Focus on correctness, security, and maintainability.",
+      gate: llmFast("Does the review indicate the implementation is ready for production?", 0.8),
+      onFail: retry(1),
+      transform: summarize(),
+    },
+  ],
+};
 ```
-
-| Factory | Gate produced |
-|---------|---------------|
-| `none` | Always passes |
-| `user` | Human approval |
-| `command(cmd)` | Shell command, exit 0 = pass |
-| `file(path)` | File existence check |
-| `assert(expr)` | JS assert on output |
-| `outputMinLength(n)` | Output at least N chars |
-| `bunTest` | `command("bun test")` |
-| `testAndTypecheck` | `commandAll("bun test", "bunx tsc --noEmit")` |
-
-| OnFail Factory | Behavior |
-|----------------|----------|
-| `retry(max?)` | Retry up to N times |
-| `skip` | Mark skipped, pass empty downstream |
-| `fallback(step)` | Run alternative step |
 
 ---
 
@@ -384,12 +475,15 @@ import { command, outputMinLength, bunTest, none, retry, skip, fallback } from "
 # Load and run a builtin preset
 > Use captain to review my PR
 
-# Generate a custom pipeline on the fly
-> Use captain to refactor the auth module and ensure all tests pass
+# Load a custom TypeScript pipeline
+> captain_load: name="./my-pipeline.ts"
+> captain_run: name="my-pipeline", input="refactor the auth module"
 
-# Define a custom inline pipeline
-> Define a captain pipeline: first analyze with flash+read tools,
-  then implement with sonnet+all tools, then run bun test as a gate
+# Generate a custom pipeline on the fly
+> captain_generate: goal="research and document best practices for auth"
+
+# Single-step ad-hoc via /captain-step
+> /captain-step "analyze this codebase" --model flash --tools read,bash
 ```
 
 ---
