@@ -665,7 +665,7 @@ describe("captain_run tool: error handling when UI methods throw", () => {
 			selectReturn: "captain:broken (builtin)",
 			inputReturn: "some input",
 		});
-		const result = (await getTool().execute(
+		const _result = (await getTool().execute(
 			"id",
 			{ name: "" },
 			undefined,
@@ -864,13 +864,12 @@ describe("captain_run tool: name=undefined treated like name=''", () => {
 		);
 
 		const { ctx } = makeCtx({ hasUI: false });
-		const result = (await getTool().execute(
+		const _result = (await getTool().execute(
 			"id",
 			{ name: undefined, input: "do X" },
 			undefined,
 			undefined,
 			ctx,
 		)) as { content: Array<{ text: string }> };
-
 	});
 });

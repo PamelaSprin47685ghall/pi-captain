@@ -93,8 +93,11 @@ export async function executeRunnable(
 // ── Step Execution ─────────────────────────────────────────────────────────
 
 /** Map tool name strings (e.g. "read", "bash") to SDK Tool instances for a given cwd. */
-function resolveTools(names: string[], cwd: string): AgentTool<any>[] {
-	return names.flatMap((name): AgentTool<any>[] => {
+// biome-ignore lint/suspicious/noExplicitAny: tool schemas vary per tool, mixed array is intentional
+type AnyAgentTool = AgentTool<any>;
+
+function resolveTools(names: string[], cwd: string): AnyAgentTool[] {
+	return names.flatMap((name): AnyAgentTool[] => {
 		switch (name) {
 			case "read":
 				return [createReadTool(cwd)];

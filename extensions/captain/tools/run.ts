@@ -65,7 +65,10 @@ function cancelled(): GuardResult {
 function guardError(msg: string): GuardResult {
 	return {
 		done: true,
-		result: { content: [{ type: "text" as const, text: msg }], details: undefined },
+		result: {
+			content: [{ type: "text" as const, text: msg }],
+			details: undefined,
+		},
 	};
 }
 
@@ -206,7 +209,8 @@ function buildEctx(
 	return {
 		exec: (cmd, args, opts) => pi.exec(cmd, args, opts),
 
-		model: ctx.model!,
+		// ctx.model is guaranteed non-null — caller guards with !ctx.model before buildEctx
+		model: ctx.model as NonNullable<typeof ctx.model>,
 		modelRegistry: ctx.modelRegistry,
 		apiKey,
 		cwd: ctx.cwd,
@@ -326,7 +330,10 @@ async function runPipeline(
 		const errMsg = err instanceof Error ? err.message : String(err);
 		return {
 			content: [
-				{ type: "text" as const, text: `Pipeline "${resolvedName}" failed: ${errMsg}` },
+				{
+					type: "text" as const,
+					text: `Pipeline "${resolvedName}" failed: ${errMsg}`,
+				},
 			],
 			details: undefined,
 		};
@@ -407,7 +414,11 @@ export function registerRunTool(
 		renderResult: (result, { isPartial }, theme) => {
 			if (isPartial)
 				return new Text(theme.fg("accent", "● Running pipeline..."), 0, 0);
-			if (result.content[0] && (result.content[0] as any).text?.startsWith("Error"))
+			if (
+				result.content[0] &&
+				"text" in result.content[0] &&
+				result.content[0].text.startsWith("Error")
+			)
 				return new Text(theme.fg("error", "✗ Pipeline failed"), 0, 0);
 			return new Text(theme.fg("success", "✓ Done"), 0, 0);
 		},

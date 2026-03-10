@@ -143,7 +143,11 @@ export function registerGenerateTool(pi: ExtensionAPI, state: CaptainState) {
 		renderResult: (result, { isPartial }, theme) => {
 			if (isPartial)
 				return new Text(theme.fg("accent", "● Generating pipeline..."), 0, 0);
-			if (result.content[0] && (result.content[0] as any).text?.startsWith("Error"))
+			if (
+				result.content[0] &&
+				"text" in result.content[0] &&
+				result.content[0].text.startsWith("Error")
+			)
 				return new Text(theme.fg("error", "✗ Generation failed"), 0, 0);
 			return new Text(theme.fg("success", "✓ Pipeline generated"), 0, 0);
 		},

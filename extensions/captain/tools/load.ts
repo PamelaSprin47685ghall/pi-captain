@@ -119,7 +119,11 @@ export function registerLoadTool(pi: ExtensionAPI, state: CaptainState) {
 				0,
 			),
 		renderResult: (result, _opts, theme) => {
-			if (result.content[0] && (result.content[0] as any).text?.startsWith("Error"))
+			if (
+				result.content[0] &&
+				"text" in result.content[0] &&
+				result.content[0].text.startsWith("Error")
+			)
 				return new Text(theme.fg("error", "✗ Load failed"), 0, 0);
 			return new Text(theme.fg("success", "✓ Pipeline loaded"), 0, 0);
 		},

@@ -35,7 +35,7 @@ export function registerDefineTool(pi: ExtensionAPI, state: CaptainState) {
 			spec: Type.String({ description: "JSON string of the Runnable tree" }),
 		}),
 
-		async execute(_id, params, _signal, _onUpdate, ctx) {
+		async execute(_id, params, _signal, _onUpdate, _ctx) {
 			try {
 				const spec = JSON.parse(params.spec) as Runnable;
 
@@ -84,7 +84,11 @@ export function registerDefineTool(pi: ExtensionAPI, state: CaptainState) {
 				0,
 			),
 		renderResult: (result, _opts, theme) => {
-			if (result.content[0] && (result.content[0] as any).text?.startsWith("Error"))
+			if (
+				result.content[0] &&
+				"text" in result.content[0] &&
+				result.content[0].text.startsWith("Error")
+			)
 				return new Text(theme.fg("error", "✗ Invalid spec"), 0, 0);
 			return new Text(theme.fg("success", "✓ Pipeline defined"), 0, 0);
 		},
