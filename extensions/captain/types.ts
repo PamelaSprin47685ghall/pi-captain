@@ -118,13 +118,24 @@ export type Transform = (params: {
 	ctx: TransformCtx;
 }) => string | Promise<string>;
 
-/** Merge strategy for combining parallel/pool outputs */
-export type MergeStrategy =
-	| "vote"
-	| "rank"
-	| "firstPass"
-	| "concat"
-	| "awaitAll";
+/**
+ * A merge function combines multiple branch outputs into one.
+ * Use the built-in presets from `merge.ts` for common cases:
+ * @example
+ * import { concat, rank, vote, firstPass, awaitAll } from "./merge.js";
+ *
+ * merge: concat      // join with separators (default)
+ * merge: rank        // LLM ranks and synthesizes best parts
+ * merge: vote        // LLM picks consensus answer
+ * merge: firstPass   // return first non-empty output
+ *
+ * // Or write inline:
+ * merge: (outputs) => outputs.join("\n\n")
+ */
+export type MergeFn = (
+	outputs: string[],
+	ctx: import("./merge.js").MergeCtx,
+) => string | Promise<string>;
 
 // ── Composition Types (infinitely nestable) ────────────────────────────────
 
@@ -175,7 +186,7 @@ export interface Pool {
 	kind: "pool";
 	step: Runnable;
 	count: number;
-	merge: { strategy: MergeStrategy };
+	merge: MergeFn;
 	gate?: Gate; // validates merged output
 	onFail?: OnFail; // retry = re-run all N branches + re-merge
 	transform?: Transform; // applied to merged output after gate passes
@@ -185,7 +196,7 @@ export interface Pool {
 export interface Parallel {
 	kind: "parallel";
 	steps: Runnable[];
-	merge: { strategy: MergeStrategy };
+	merge: MergeFn;
 	gate?: Gate; // validates merged output
 	onFail?: OnFail; // retry = re-run all branches + re-merge
 	transform?: Transform; // applied to merged output after gate passes

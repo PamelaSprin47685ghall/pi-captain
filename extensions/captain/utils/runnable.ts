@@ -110,13 +110,13 @@ export function describeRunnable(r: Runnable, indent: number): string {
 
 		case "pool":
 			return [
-				`${pad}⟳ [pool] ×${r.count} (merge: ${r.merge.strategy})${containerGateInfo(r.gate, r.onFail)}`,
+				`${pad}⟳ [pool] ×${r.count} (merge: ${r.merge.name || "fn"})${containerGateInfo(r.gate, r.onFail)}`,
 				describeRunnable(r.step, indent + 2),
 			].join("\n");
 
 		case "parallel":
 			return [
-				`${pad}⫸ [parallel] (${r.steps.length} branches, merge: ${r.merge.strategy})${containerGateInfo(r.gate, r.onFail)}`,
+				`${pad}⫸ [parallel] (${r.steps.length} branches, merge: ${r.merge.name || "fn"})${containerGateInfo(r.gate, r.onFail)}`,
 				...r.steps.map((s) => describeRunnable(s, indent + 2)),
 			].join("\n");
 

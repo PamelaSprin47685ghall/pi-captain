@@ -51,6 +51,7 @@
 //         contract-tasks, shred-and-score, validate-contracts, resolve-dependencies,
 //         generate-execution-spec, render-canvas}.ts
 
+import { rank } from "../merge.js";
 import {
 	bddScenarios,
 	contractTasks,
@@ -73,7 +74,7 @@ const slicePool: Pool = {
 	kind: "pool",
 	step: sliceStoriesAi,
 	count: 3,
-	merge: { strategy: "rank" },
+	merge: rank,
 };
 
 // ── Pipeline Spec ────────────────────────────────────────────────────────

@@ -1,49 +1,29 @@
-import { describe, expect, mock, test } from "bun:test";
-import { mergeOutputs } from "./merge.js";
+import { describe, expect, test } from "bun:test";
+import type { MergeCtx } from "./merge.js";
+import { awaitAll, concat, firstPass, rank, vote } from "./merge.js";
 
-// ── Helpers ───────────────────────────────────────────────────────────────
-
-// A fake MergeContext — only needed for vote/rank (LLM strategies)
-function makeMctx(llmResponse = "synthesized answer") {
-	const fakeModel = {} as Parameters<typeof mergeOutputs>[2]["model"];
-	const fakeComplete = mock(async () => ({
-		content: [{ type: "text" as const, text: llmResponse }],
-	}));
-
-	// Patch the module-level complete used internally — we test via outputs instead
+// A fake MergeCtx — only needed for vote/rank (LLM strategies)
+function makeMctx(): MergeCtx {
 	return {
-		model: fakeModel,
+		// biome-ignore lint/suspicious/noExplicitAny: test stub
+		model: {} as any,
 		apiKey: "test-key",
-		_fakeComplete: fakeComplete,
 	};
 }
 
-// ── Edge cases ────────────────────────────────────────────────────────────
+// ── concat ────────────────────────────────────────────────────────────────
 
-describe("mergeOutputs: edge cases", () => {
+describe("concat", () => {
 	test("returns (no output) when all outputs are empty", async () => {
-		const mctx = makeMctx();
-		const result = await mergeOutputs("concat", ["", "  ", ""], mctx);
-		expect(result).toBe("(no output)");
+		expect(await concat(["", "  ", ""], makeMctx())).toBe("(no output)");
 	});
 
 	test("returns single output directly when only one is non-empty", async () => {
-		const mctx = makeMctx();
-		const result = await mergeOutputs("concat", ["", "only this", ""], mctx);
-		expect(result).toBe("only this");
+		expect(await concat(["", "only this", ""], makeMctx())).toBe("only this");
 	});
-});
 
-// ── concat ────────────────────────────────────────────────────────────────
-
-describe("mergeOutputs: concat", () => {
 	test("joins all outputs with branch separators", async () => {
-		const mctx = makeMctx();
-		const result = await mergeOutputs(
-			"concat",
-			["alpha", "beta", "gamma"],
-			mctx,
-		);
+		const result = await concat(["alpha", "beta", "gamma"], makeMctx());
 		expect(result).toContain("--- Branch 1 ---");
 		expect(result).toContain("--- Branch 2 ---");
 		expect(result).toContain("--- Branch 3 ---");
@@ -53,8 +33,7 @@ describe("mergeOutputs: concat", () => {
 	});
 
 	test("skips empty outputs", async () => {
-		const mctx = makeMctx();
-		const result = await mergeOutputs("concat", ["a", "", "c"], mctx);
+		const result = await concat(["a", "", "c"], makeMctx());
 		expect(result).toContain("--- Branch 1 ---");
 		expect(result).toContain("--- Branch 2 ---");
 		expect(result).not.toContain("--- Branch 3 ---");
@@ -63,10 +42,9 @@ describe("mergeOutputs: concat", () => {
 
 // ── awaitAll ──────────────────────────────────────────────────────────────
 
-describe("mergeOutputs: awaitAll", () => {
-	test("behaves like concat (all branches joined with separators)", async () => {
-		const mctx = makeMctx();
-		const result = await mergeOutputs("awaitAll", ["x", "y"], mctx);
+describe("awaitAll", () => {
+	test("behaves like concat", async () => {
+		const result = await awaitAll(["x", "y"], makeMctx());
 		expect(result).toContain("--- Branch 1 ---");
 		expect(result).toContain("x");
 		expect(result).toContain("--- Branch 2 ---");
@@ -76,52 +54,42 @@ describe("mergeOutputs: awaitAll", () => {
 
 // ── firstPass ─────────────────────────────────────────────────────────────
 
-describe("mergeOutputs: firstPass", () => {
+describe("firstPass", () => {
 	test("returns the first non-empty output", async () => {
-		const mctx = makeMctx();
-		const result = await mergeOutputs(
-			"firstPass",
-			["", "winner", "other"],
-			mctx,
-		);
-		expect(result).toBe("winner");
+		expect(await firstPass(["", "winner", "other"], makeMctx())).toBe("winner");
 	});
 
 	test("returns only output when there is one", async () => {
-		const mctx = makeMctx();
-		const result = await mergeOutputs("firstPass", ["solo"], mctx);
-		expect(result).toBe("solo");
+		expect(await firstPass(["solo"], makeMctx())).toBe("solo");
+	});
+
+	test("returns (no output) when all empty", async () => {
+		expect(await firstPass(["", "  "], makeMctx())).toBe("(no output)");
 	});
 });
 
 // ── vote ──────────────────────────────────────────────────────────────────
 
-describe("mergeOutputs: vote", () => {
-	test("passes outputs to LLM and returns its response", async () => {
-		// We test vote by verifying it does NOT return concat-style output
-		// (since we can't mock the module-level `complete` easily without DI)
-		// Instead, verify it at least doesn't throw and returns a string
-		const mctx = makeMctx();
+describe("vote", () => {
+	test("returns a string (or merge error fallback without real API)", async () => {
 		try {
-			const result = await mergeOutputs("vote", ["option A", "option B"], mctx);
+			const result = await vote(["option A", "option B"], makeMctx());
 			expect(typeof result).toBe("string");
 		} catch {
-			// If LLM call fails (no real API key), that's expected in unit test
-			// The merge error fallback should still return a string
+			// expected without real API key
 		}
 	});
 });
 
 // ── rank ──────────────────────────────────────────────────────────────────
 
-describe("mergeOutputs: rank", () => {
-	test("returns a string (rank merges or falls back on error)", async () => {
-		const mctx = makeMctx();
+describe("rank", () => {
+	test("returns a string (or merge error fallback without real API)", async () => {
 		try {
-			const result = await mergeOutputs("rank", ["answer 1", "answer 2"], mctx);
+			const result = await rank(["answer 1", "answer 2"], makeMctx());
 			expect(typeof result).toBe("string");
 		} catch {
-			// Expected in unit test without real API
+			// expected without real API key
 		}
 	});
 });

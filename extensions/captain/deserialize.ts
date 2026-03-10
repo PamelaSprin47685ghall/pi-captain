@@ -14,8 +14,16 @@ import {
 	warn,
 } from "./gates/on-fail.js";
 import { command, file, regexCI, user } from "./gates/presets.js";
+import { mergeFromStrategy } from "./merge.js";
 import { extract, full, summarize } from "./transforms/presets.js";
-import type { Gate, OnFail, Runnable, Step, Transform } from "./types.js";
+import type {
+	Gate,
+	MergeFn,
+	OnFail,
+	Runnable,
+	Step,
+	Transform,
+} from "./types.js";
 
 // ── Gate deserialization ──────────────────────────────────────────────────
 
@@ -96,6 +104,19 @@ function deserializeTransform(raw: unknown): Transform {
 	return full;
 }
 
+// ── Merge deserialization ─────────────────────────────────────────────────
+
+type RawMerge = { strategy?: string };
+
+function deserializeMerge(raw: unknown): MergeFn {
+	if (typeof raw === "function") return raw as MergeFn;
+	const m = raw as RawMerge | undefined;
+	const strategy = m?.strategy ?? "concat";
+	return mergeFromStrategy(
+		strategy as "concat" | "awaitAll" | "firstPass" | "vote" | "rank",
+	);
+}
+
 // ── Runnable deserialization ──────────────────────────────────────────────
 
 function deserializeStep(s: Step): Step {
@@ -128,6 +149,7 @@ export function deserializeRunnable(r: Runnable): Runnable {
 				gate: deserializeGate(r.gate),
 				onFail: deserializeOnFail(r.onFail),
 				transform: r.transform ? deserializeTransform(r.transform) : undefined,
+				merge: deserializeMerge(r.merge),
 				step: deserializeRunnable(r.step),
 			};
 
@@ -137,6 +159,7 @@ export function deserializeRunnable(r: Runnable): Runnable {
 				gate: deserializeGate(r.gate),
 				onFail: deserializeOnFail(r.onFail),
 				transform: r.transform ? deserializeTransform(r.transform) : undefined,
+				merge: deserializeMerge(r.merge),
 				steps: r.steps.map(deserializeRunnable),
 			};
 

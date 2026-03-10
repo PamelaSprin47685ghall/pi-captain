@@ -33,6 +33,7 @@
 // Steps:  extensions/captain/steps/{ears-structure,slice-stories,bdd-scenarios,
 //         tdd-task-list,validate-atomicity,format-backlog}.ts
 
+import { rank } from "../merge.js";
 import {
 	bddScenarios,
 	earsStructure,
@@ -51,7 +52,7 @@ const slicePool: Pool = {
 	kind: "pool",
 	step: sliceStories,
 	count: 3,
-	merge: { strategy: "rank" },
+	merge: rank,
 };
 
 // ── Pipeline Spec ────────────────────────────────────────────────────────

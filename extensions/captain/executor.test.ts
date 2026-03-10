@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ExecutorContext } from "./executor.js";
 import { skip, warn } from "./gates/on-fail.js";
+import { concat, firstPass } from "./merge.js";
 import { extract, full } from "./transforms/presets.js";
 import type { Parallel, Pool, Sequential, Step } from "./types.js";
 
@@ -533,7 +534,7 @@ describe("executeRunnable: parallel", () => {
 		const par: Parallel = {
 			kind: "parallel",
 			steps: [makeStep("a"), makeStep("b"), makeStep("c")],
-			merge: { strategy: "concat" },
+			merge: concat,
 		};
 
 		const { output, results } = await parExecute(
@@ -588,7 +589,7 @@ describe("executeRunnable: parallel", () => {
 		const par: Parallel = {
 			kind: "parallel",
 			steps: [makeStep("a"), makeStep("b")],
-			merge: { strategy: "firstPass" },
+			merge: firstPass,
 		};
 
 		const { output } = await parExecute(par, "", "", makeCtx());
@@ -634,7 +635,7 @@ describe("executeRunnable: parallel", () => {
 		const par: Parallel = {
 			kind: "parallel",
 			steps: [makeStep("a", "prompt: $INPUT"), makeStep("b", "prompt: $INPUT")],
-			merge: { strategy: "concat" },
+			merge: concat,
 		};
 
 		await parExecute(par, "shared-input", "orig", makeCtx());
@@ -687,7 +688,7 @@ describe("executeRunnable: pool", () => {
 			kind: "pool",
 			step: makeStep("worker"),
 			count: 3,
-			merge: { strategy: "concat" },
+			merge: concat,
 		};
 
 		const { output, results } = await poolExecute(
@@ -742,7 +743,7 @@ describe("executeRunnable: pool", () => {
 			kind: "pool",
 			step: makeStep("worker", "$INPUT"),
 			count: 2,
-			merge: { strategy: "concat" },
+			merge: concat,
 		};
 
 		await poolExecute(pool, "my-task", "orig", makeCtx());
@@ -790,7 +791,7 @@ describe("executeRunnable: pool", () => {
 			kind: "pool",
 			step: makeStep("solo"),
 			count: 1,
-			merge: { strategy: "firstPass" },
+			merge: firstPass,
 		};
 
 		const { output } = await poolExecute(pool, "", "", makeCtx());

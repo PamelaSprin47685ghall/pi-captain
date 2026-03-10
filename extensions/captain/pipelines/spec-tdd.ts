@@ -25,6 +25,7 @@
 // Steps:  extensions/captain/steps/{write-spec,tdd-red,tdd-green,write-docs,
 //         review-code,fix-review-issues,prepare-pr}.ts
 
+import { concat } from "../merge.js";
 import {
 	preparePR,
 	reviewCode,
@@ -40,7 +41,7 @@ import type { Parallel, Runnable } from "../types.js";
 const codeAndDoc: Parallel = {
 	kind: "parallel",
 	steps: [tddGreen, writeDocs],
-	merge: { strategy: "concat" },
+	merge: concat,
 };
 
 // ── Pipeline Spec ────────────────────────────────────────────────────────

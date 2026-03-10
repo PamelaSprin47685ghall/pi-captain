@@ -23,6 +23,7 @@
 //         re-shred,validate-units,resolve-dependencies,format-tree,
 //         generate-execution-spec,render-canvas}.ts
 
+import { rank } from "../merge.js";
 import {
 	captureAndClarify,
 	decompose,
@@ -41,7 +42,7 @@ const decomposePool: Pool = {
 	kind: "pool",
 	step: decompose,
 	count: 3,
-	merge: { strategy: "rank" },
+	merge: rank,
 };
 
 // ── Pipeline Spec ────────────────────────────────────────────────────────

@@ -38,6 +38,7 @@
 //         fetch-pr-metadata-gh-call, fetch-pr-metadata-emit,
 //         fetch-pr-files, review-pr-file, synthesize-pr-verdict}.ts
 
+import { concat } from "../merge.js";
 import {
 	fetchPrFiles,
 	fetchPrMetadataAuthCheck,
@@ -58,7 +59,7 @@ import type { Parallel, Pool, Runnable } from "../types.js";
 const validateAndAuth: Parallel = {
 	kind: "parallel",
 	steps: [validatePrInput, fetchPrMetadataAuthCheck],
-	merge: { strategy: "concat" },
+	merge: concat,
 };
 
 // ── Stage 3: Parallel — GitHub API call + auth-failure path ─────────────
@@ -68,7 +69,7 @@ const validateAndAuth: Parallel = {
 const fetchAndValidateAuth: Parallel = {
 	kind: "parallel",
 	steps: [fetchPrMetadataGhCall, fetchPrMetadataAuthFailure],
-	merge: { strategy: "concat" },
+	merge: concat,
 };
 
 // ── Stage 6: Pool — per-file review in parallel ──────────────────────────
@@ -79,7 +80,7 @@ const reviewFilesPool: Pool = {
 	kind: "pool",
 	step: reviewPrFile,
 	count: 10,
-	merge: { strategy: "concat" },
+	merge: concat,
 };
 
 // ── Pipeline Spec ────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { concat } from "../merge.js";
 import { full } from "../transforms/presets.js";
 import type { Parallel, Pool, Runnable, Sequential, Step } from "../types.js";
 import {
@@ -28,13 +29,13 @@ const pool = (inner: Runnable, count = 3): Pool => ({
 	kind: "pool",
 	step: inner,
 	count,
-	merge: { strategy: "concat" },
+	merge: concat,
 });
 
 const par = (...steps: Runnable[]): Parallel => ({
 	kind: "parallel",
 	steps,
-	merge: { strategy: "concat" },
+	merge: concat,
 });
 
 // ── collectAgentRefs ──────────────────────────────────────────────────────

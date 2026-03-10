@@ -20,6 +20,7 @@
 
 import { fallback as onFailFallback, retry, warn } from "../gates/on-fail.js";
 import { regexCI } from "../gates/presets.js";
+import { concat, rank } from "../merge.js";
 import { extract, full, summarize } from "../transforms/presets.js";
 import type {
 	OnFail,
@@ -113,7 +114,7 @@ $INPUT`,
 const expandParallel: Parallel = {
 	kind: "parallel",
 	steps: [expandPractical, expandCreative],
-	merge: { strategy: "concat" },
+	merge: concat,
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -138,7 +139,7 @@ const rankPool: Pool = {
 	kind: "pool",
 	step: ranker,
 	count: 3,
-	merge: { strategy: "rank" },
+	merge: rank,
 };
 
 // ─────────────────────────────────────────────────────────────────────────

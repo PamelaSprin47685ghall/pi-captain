@@ -18,7 +18,7 @@ import {
 	SettingsManager,
 } from "@mariozechner/pi-coding-agent";
 import { type GateResult, runGate } from "./gates.js";
-import { mergeOutputs } from "./merge.js";
+import type { MergeCtx } from "./merge.js";
 import type {
 	Gate,
 	GateCtx,
@@ -504,11 +504,12 @@ async function executePool(
 			} else outputs.push(`(error: ${r.reason})`);
 		}
 
-		const merged = await mergeOutputs(pool.merge.strategy, outputs, {
+		const mctx: MergeCtx = {
 			model: ectx.model,
 			apiKey: ectx.apiKey,
 			signal: ectx.signal,
-		});
+		};
+		const merged = await pool.merge(outputs, mctx);
 		const checked = await gateCheck(
 			merged,
 			allResults,
@@ -581,11 +582,12 @@ async function executeParallel(
 			} else outputs.push(`(error: ${r.reason})`);
 		}
 
-		const merged = await mergeOutputs(par.merge.strategy, outputs, {
+		const mctx: MergeCtx = {
 			model: ectx.model,
 			apiKey: ectx.apiKey,
 			signal: ectx.signal,
-		});
+		};
+		const merged = await par.merge(outputs, mctx);
 		const checked = await gateCheck(
 			merged,
 			allResults,
