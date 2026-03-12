@@ -211,7 +211,7 @@
       "width": 480,
       "height": 500,
       "color": "3",
-      "text": "## 🌲 Worktree Isolation Rule\n\nEvery **parallel boundary** automatically creates\na git worktree — no config needed.\n\n```ts\n// Derived path — zero config\n// .worktrees/{pipeline}-{branch}-{hash}\ntype WorktreePath = string;\n```\n\n**The rule is simple:**\n- `parallel` or `pool` → each branch gets its own worktree\n- `sequential` steps *inside* a parallel share that worktree\n- `sequential` steps *outside* parallel → main tree\n- Nested parallel → nested worktrees\n\n**parallel = worktree, always.**\nZero configuration. The topology *is* the isolation model."
+      "text": "## 🌲 Worktree Isolation Rule\n\nEvery **parallel boundary** automatically creates\na git worktree — no config needed.\n\n```ts\n// Derived path -- zero config\n// .worktrees/{pipeline}-{branch}-{hash}\ntype WorktreePath = string;\n```\n\n**The rule is simple:**\n- `parallel` or `pool` → each branch gets its own worktree\n- `sequential` steps *inside* a parallel share that worktree\n- `sequential` steps *outside* parallel → main tree\n- Nested parallel → nested worktrees\n\n**parallel = worktree, always.**\nZero configuration. The topology *is* the isolation model."
     },
     {
       "type": "text",
@@ -230,7 +230,7 @@
       "y": 390,
       "width": 520,
       "height": 590,
-      "text": "## Gate & Function Types\n\n```ts\n// Gate — pure function\ntype Gate = (params: {\n  output: string;\n  ctx?: GateCtx;\n}) => true | string | Promise<true | string>;\n// true = pass, string = failure reason\n\n// OnFail — pure function\ntype OnFail = (ctx: OnFailCtx) =>\n  OnFailResult | Promise<OnFailResult>;\n\ntype OnFailResult =\n  | { action: \"retry\" }\n  | { action: \"fail\" }\n  | { action: \"skip\" }\n  | { action: \"warn\" }\n  | { action: \"fallback\"; step: Step };\n\n// Transform — pure function\ntype Transform = (params: {\n  output: string;\n  original: string;\n  ctx: TransformCtx;\n}) => string | Promise<string>;\n\n// MergeFn — pure function\ntype MergeFn = (\n  outputs: string[],\n  ctx: MergeCtx,\n) => string | Promise<string>;\n```"
+      "text": "## Gate & Function Types\n\n```ts\n// Gate -- pure function\ntype Gate = (params: {\n  output: string;\n  ctx?: GateCtx;\n}) => true | string | Promise;\n// true = pass, string = failure reason\n\n// OnFail -- pure function\ntype OnFail = (ctx: OnFailCtx) =>\n  OnFailResult | Promise;\n\ntype OnFailResult =\n  | { action: \"retry\" | \"fail\" | \"skip\" | \"warn\" }\n  | { action: \"fallback\"; step: Step };\n\n// Transform -- pure function\ntype Transform = (params: {\n  output: string;\n  original: string;\n  ctx: TransformCtx;\n}) => string | Promise;\n\n// MergeFn -- pure function\ntype MergeFn = (\n  outputs: string[],\n  ctx: MergeCtx,\n) => string | Promise;\n```"
     },
     {
       "type": "text",
@@ -260,7 +260,7 @@
       "width": 700,
       "height": 320,
       "color": "1",
-      "text": "```ts\n// Recursive composition — type-safe nesting\nconst pipeline: Parallel = {\n  kind: \"parallel\",\n  steps: [\n    { kind: \"parallel\", steps: [search, analyze],\n      merge: awaitAll },\n    { kind: \"sequential\", steps: [\n      { kind: \"pool\", step: planBuild, count: 3,\n        merge: rank },\n      reviewStep,\n    ]},\n  ],\n  merge: awaitAll,\n};\n```"
+      "text": "## Recursive Composition\n\n```ts\n// Recursive -- any slot accepts Runnable (Step|Sequential|Pool|Parallel)\nconst pipeline: Parallel = {\n  kind: \"parallel\",\n  steps: [\n    innerParallel,   // { kind: \"parallel\", steps: [search, analyze] }\n    { kind: \"sequential\", steps: [poolOf3, reviewStep] },\n  ],\n  merge: awaitAll,\n};\n```"
     },
     {
       "type": "text",
