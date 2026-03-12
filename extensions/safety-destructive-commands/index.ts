@@ -132,6 +132,7 @@ const SAFE_EXCEPTIONS = [
 // ── Extension ────────────────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
+	// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Legacy handler will be refactored
 	pi.on("tool_call", async (event, ctx) => {
 		if (!isToolCallEventType("bash", event)) return undefined;
 

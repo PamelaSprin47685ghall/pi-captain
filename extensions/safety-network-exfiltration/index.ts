@@ -82,6 +82,7 @@ const UPLOAD_PATTERNS = [
 // ── Extension ────────────────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
+	// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Legacy handler will be refactored
 	pi.on("tool_call", async (event, ctx) => {
 		if (!isToolCallEventType("bash", event)) return undefined;
 
@@ -143,6 +144,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	// Also check write tool for secret content being written to files
+	// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Legacy handler will be refactored
 	pi.on("tool_call", async (event, ctx) => {
 		if (!isToolCallEventType("write", event)) return undefined;
 

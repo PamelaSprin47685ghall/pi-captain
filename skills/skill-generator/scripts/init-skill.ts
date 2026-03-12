@@ -86,17 +86,25 @@ function main() {
 	const args = process.argv.slice(2);
 
 	if (args.length === 0 || args[0] === "--help") {
+		// biome-ignore lint/suspicious/noConsole: CLI help output
 		console.log(
 			"Usage: bun scripts/init-skill.ts <skill-name> [--output <dir>]",
 		);
+		// biome-ignore lint/suspicious/noConsole: CLI help output
 		console.log("");
+		// biome-ignore lint/suspicious/noConsole: CLI help output
 		console.log("Options:");
+		// biome-ignore lint/suspicious/noConsole: CLI help output
 		console.log(
 			"  --output <dir>  Output directory (default: current directory)",
 		);
+		// biome-ignore lint/suspicious/noConsole: CLI help output
 		console.log("");
+		// biome-ignore lint/suspicious/noConsole: CLI help output
 		console.log("Examples:");
+		// biome-ignore lint/suspicious/noConsole: CLI help output
 		console.log("  bun scripts/init-skill.ts api-validator");
+		// biome-ignore lint/suspicious/noConsole: CLI help output
 		console.log("  bun scripts/init-skill.ts api-validator --output ./skills");
 		process.exit(1);
 	}
@@ -108,6 +116,7 @@ function main() {
 
 	// Validate skill name
 	if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(skillName)) {
+		// biome-ignore lint/suspicious/noConsole: CLI error output
 		console.error(
 			`Error: Skill name "${skillName}" must be kebab-case (lowercase letters, digits, hyphens).`,
 		);
@@ -115,6 +124,7 @@ function main() {
 	}
 
 	if (skillName.length > 64) {
+		// biome-ignore lint/suspicious/noConsole: CLI error output
 		console.error(`Error: Skill name exceeds 64 characters.`);
 		process.exit(1);
 	}
@@ -122,6 +132,7 @@ function main() {
 	const skillDir = resolve(outputDir, skillName);
 
 	if (existsSync(skillDir)) {
+		// biome-ignore lint/suspicious/noConsole: CLI error output
 		console.error(`Error: Directory already exists: ${skillDir}`);
 		process.exit(1);
 	}
@@ -144,16 +155,27 @@ function main() {
 	// Write rules/_template.md
 	writeFileSync(join(skillDir, "rules", "_template.md"), RULE_TEMPLATE);
 
+	// biome-ignore lint/suspicious/noConsole: CLI success output
 	console.log(`Initialized skill "${skillName}" at ${skillDir}`);
+	// biome-ignore lint/suspicious/noConsole: CLI success output
 	console.log("");
+	// biome-ignore lint/suspicious/noConsole: CLI success output
 	console.log("Created:");
+	// biome-ignore lint/suspicious/noConsole: CLI success output
 	console.log(`  ${skillDir}/SKILL.md`);
+	// biome-ignore lint/suspicious/noConsole: CLI success output
 	console.log(`  ${skillDir}/metadata.json`);
+	// biome-ignore lint/suspicious/noConsole: CLI success output
 	console.log(`  ${skillDir}/rules/_template.md`);
+	// biome-ignore lint/suspicious/noConsole: CLI success output
 	console.log("");
+	// biome-ignore lint/suspicious/noConsole: CLI success output
 	console.log("Next steps:");
+	// biome-ignore lint/suspicious/noConsole: CLI success output
 	console.log("  1. Fill in [TODO:] markers in SKILL.md");
+	// biome-ignore lint/suspicious/noConsole: CLI success output
 	console.log("  2. Write trigger descriptions in metadata.json");
+	// biome-ignore lint/suspicious/noConsole: CLI success output
 	console.log("  3. Add rule files to rules/");
 }
 

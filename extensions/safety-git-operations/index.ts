@@ -22,164 +22,112 @@
  *   - In non-interactive mode, all operations are blocked
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@mariozechner/pi-coding-agent";
 import { isToolCallEventType } from "@mariozechner/pi-coding-agent";
+import {
+	GIT_PATTERNS,
+	resetSessionMemory,
+	sessionApproved,
+	sessionBlocked,
+} from "./patterns.js";
 
-// ── Pattern definitions ──────────────────────────────────────────────────────
+// ── Handler Functions ────────────────────────────────────────────────────────
 
-type Severity = "critical" | "standard";
+async function processPatternMatch(
+	action: string,
+	severity: string,
+	command: string,
+	ctx: ExtensionContext,
+) {
+	// Check session memory first
+	if (sessionBlocked.has(action)) {
+		if (ctx.hasUI)
+			ctx.ui.notify(`🚫 ${action} — auto-blocked (session)`, "warning");
+		return { block: true, reason: `${action} blocked (session setting)` };
+	}
+	if (sessionApproved.has(action)) {
+		return undefined; // silently approved
+	}
+	// No UI? Block everything
+	if (!ctx.hasUI) {
+		return {
+			block: true,
+			reason: `${action} requires confirmation (no UI)`,
+		};
+	}
+	// Build confirmation dialog
+	const displayCmd =
+		command.length > 120 ? `${command.slice(0, 120)}…` : command;
 
-interface GitPattern {
-	pattern: RegExp;
-	action: string; // Human-readable action name (used as session memory key)
-	severity: Severity;
+	if (severity === "critical") {
+		return await handleCritical(action, displayCmd, ctx);
+	}
+	return await handleStandard(action, displayCmd, ctx);
 }
 
-const GIT_PATTERNS: GitPattern[] = [
-	// Critical — destructive, hard to undo
-	{
-		pattern: /\bgit\s+push\s+.*--force(-with-lease)?\b/i,
-		action: "force push",
-		severity: "critical",
-	},
-	{
-		pattern: /\bgit\s+push\s+-f\b/i,
-		action: "force push",
-		severity: "critical",
-	},
-	{
-		pattern: /\bgit\s+reset\s+--hard\b/i,
-		action: "hard reset",
-		severity: "critical",
-	},
-	{
-		pattern: /\bgit\s+clean\s+-[a-z]*f/i,
-		action: "clean (remove untracked)",
-		severity: "critical",
-	},
-	{
-		pattern: /\bgit\s+stash\s+(drop|clear)\b/i,
-		action: "drop/clear stash",
-		severity: "critical",
-	},
-	{
-		pattern: /\bgit\s+branch\s+-D\b/i,
-		action: "force-delete branch",
-		severity: "critical",
-	},
-	{
-		pattern: /\bgit\s+reflog\s+expire\b/i,
-		action: "expire reflog",
-		severity: "critical",
-	},
+async function handleCritical(
+	action: string,
+	displayCmd: string,
+	ctx: ExtensionContext,
+) {
+	// Critical: simple confirm with auto-deny timeout (30s)
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), 30_000);
 
-	// Standard — state-changing but recoverable
-	{ pattern: /\bgit\s+push\b/i, action: "push", severity: "standard" },
-	{ pattern: /\bgit\s+commit\b/i, action: "commit", severity: "standard" },
-	{ pattern: /\bgit\s+rebase\b/i, action: "rebase", severity: "standard" },
-	{ pattern: /\bgit\s+merge\b/i, action: "merge", severity: "standard" },
-	{
-		pattern: /\bgit\s+tag\b/i,
-		action: "create/modify tag",
-		severity: "standard",
-	},
-	{
-		pattern: /\bgit\s+cherry-pick\b/i,
-		action: "cherry-pick",
-		severity: "standard",
-	},
-	{ pattern: /\bgit\s+revert\b/i, action: "revert", severity: "standard" },
-	{ pattern: /\bgit\s+am\b/i, action: "apply patches", severity: "standard" },
-	{
-		pattern: /\bgit\s+branch\s+-d\b/i,
-		action: "delete branch",
-		severity: "standard",
-	},
+	const choice = await ctx.ui.select(
+		`🔴 CRITICAL: ${action}\n\n  ${displayCmd}\n\nAllow? (auto-deny in 30s)`,
+		["✅ Allow once", "🚫 Block"],
+		{ signal: controller.signal },
+	);
 
-	// GitHub CLI — external side effects
-	{
-		pattern: /\bgh\s+pr\s+create\b/i,
-		action: "create GitHub PR",
-		severity: "standard",
-	},
-	{
-		pattern: /\bgh\s+pr\s+merge\b/i,
-		action: "merge GitHub PR",
-		severity: "standard",
-	},
-	{
-		pattern: /\bgh\s+pr\s+close\b/i,
-		action: "close GitHub PR",
-		severity: "standard",
-	},
-	{
-		pattern: /\bgh\s+pr\s+(comment|review)\b/i,
-		action: "comment/review GitHub PR",
-		severity: "standard",
-	},
-	{
-		pattern: /\bgh\s+issue\s+create\b/i,
-		action: "create GitHub issue",
-		severity: "standard",
-	},
-	{
-		pattern: /\bgh\s+issue\s+(close|delete)\b/i,
-		action: "close/delete GitHub issue",
-		severity: "standard",
-	},
-	{
-		pattern: /\bgh\s+release\s+(create|delete|edit)\b/i,
-		action: "manage GitHub release",
-		severity: "standard",
-	},
-	{
-		pattern: /\bgh\s+repo\s+(create|delete|rename|archive)\b/i,
-		action: "manage GitHub repo",
-		severity: "critical",
-	},
-	{
-		pattern: /\bgh\s+secret\s+(set|delete|remove)\b/i,
-		action: "manage GitHub secrets",
-		severity: "critical",
-	},
+	clearTimeout(timeout);
+	if (controller.signal.aborted || choice !== "✅ Allow once") {
+		const reason = controller.signal.aborted
+			? "Timed out (30s)"
+			: "Blocked by user";
+		return { block: true, reason: `${action}: ${reason}` };
+	}
+	return undefined;
+}
 
-	// GitLab CLI
-	{
-		pattern: /\bglab\s+mr\s+create\b/i,
-		action: "create GitLab MR",
-		severity: "standard",
-	},
-	{
-		pattern: /\bglab\s+mr\s+(merge|close)\b/i,
-		action: "merge/close GitLab MR",
-		severity: "standard",
-	},
-	{
-		pattern: /\bglab\s+issue\s+(create|close|delete)\b/i,
-		action: "manage GitLab issue",
-		severity: "standard",
-	},
-	{
-		pattern: /\bglab\s+release\s+(create|delete)\b/i,
-		action: "manage GitLab release",
-		severity: "standard",
-	},
-	{
-		pattern: /\bglab\s+repo\s+(create|delete|archive)\b/i,
-		action: "manage GitLab repo",
-		severity: "critical",
-	},
-];
+async function handleStandard(
+	action: string,
+	displayCmd: string,
+	ctx: ExtensionContext,
+) {
+	// Standard: offer session-remember options
+	const choice = await ctx.ui.select(
+		`🟡 ${action}\n\n  ${displayCmd}\n\nAllow?`,
+		[
+			"✅ Allow once",
+			"🚫 Block once",
+			`✅✅ Auto-approve "${action}" for this session`,
+			`🚫🚫 Auto-block "${action}" for this session`,
+		],
+	);
 
-// ── Session memory ───────────────────────────────────────────────────────────
-
-// Track which actions the user has pre-approved or pre-blocked for this session
-const sessionApproved = new Set<string>();
-const sessionBlocked = new Set<string>();
-
-function resetSessionMemory() {
-	sessionApproved.clear();
-	sessionBlocked.clear();
+	if (!choice || choice.startsWith("🚫🚫")) {
+		sessionBlocked.add(action);
+		ctx.ui.notify(
+			`🚫 All "${action}" commands auto-blocked for this session`,
+			"warning",
+		);
+		return { block: true, reason: `${action} blocked by user (session)` };
+	}
+	if (choice.startsWith("🚫")) {
+		return { block: true, reason: `${action} blocked by user` };
+	}
+	if (choice.startsWith("✅✅")) {
+		sessionApproved.add(action);
+		ctx.ui.notify(
+			`✅ All "${action}" commands auto-approved for this session`,
+			"info",
+		);
+	}
+	return undefined;
 }
 
 // ── Extension ────────────────────────────────────────────────────────────────
@@ -205,23 +153,22 @@ export default function (pi: ExtensionAPI) {
 
 			if (sessionApproved.size > 0) {
 				lines.push("✅ Auto-approved for this session:");
-				for (const action of sessionApproved) lines.push(`   • ${action}`);
+				for (const action of Array.from(sessionApproved))
+					lines.push(`   • ${action}`);
 				lines.push("");
 			}
-
 			if (sessionBlocked.size > 0) {
 				lines.push("🚫 Auto-blocked for this session:");
-				for (const action of sessionBlocked) lines.push(`   • ${action}`);
+				for (const action of Array.from(sessionBlocked))
+					lines.push(`   • ${action}`);
 				lines.push("");
 			}
-
 			if (sessionApproved.size === 0 && sessionBlocked.size === 0) {
 				lines.push(
 					"No session overrides active — all operations prompt normally.",
 				);
 				lines.push("");
 			}
-
 			lines.push("Use /git-safety reset to clear all session overrides.");
 			lines.push("───────────────────────");
 
@@ -230,7 +177,7 @@ export default function (pi: ExtensionAPI) {
 			// Handle "reset" argument
 			if (_args.trim().toLowerCase() === "reset") {
 				resetSessionMemory();
-				ctx.ui.notify("✅ Session git approvals/blocks cleared.", "success");
+				ctx.ui.notify("✅ Session git approvals/blocks cleared.", "info");
 			}
 		},
 	});
@@ -244,85 +191,7 @@ export default function (pi: ExtensionAPI) {
 		// Find first matching pattern (patterns are ordered critical-first)
 		for (const { pattern, action, severity } of GIT_PATTERNS) {
 			if (!pattern.test(command)) continue;
-
-			// Check session memory first
-			if (sessionBlocked.has(action)) {
-				if (ctx.hasUI)
-					ctx.ui.notify(`🚫 ${action} — auto-blocked (session)`, "warning");
-				return { block: true, reason: `${action} blocked (session setting)` };
-			}
-			if (sessionApproved.has(action)) {
-				return undefined; // silently approved
-			}
-
-			// No UI? Block everything
-			if (!ctx.hasUI) {
-				return {
-					block: true,
-					reason: `${action} requires confirmation (no UI)`,
-				};
-			}
-
-			// Build confirmation dialog
-			const icon = severity === "critical" ? "🔴" : "🟡";
-			const displayCmd =
-				command.length > 120 ? `${command.slice(0, 120)}…` : command;
-
-			if (severity === "critical") {
-				// Critical: simple confirm with auto-deny timeout (30s)
-				const controller = new AbortController();
-				const timeout = setTimeout(() => controller.abort(), 30_000);
-
-				const choice = await ctx.ui.select(
-					`${icon} CRITICAL: ${action}\n\n  ${displayCmd}\n\nAllow? (auto-deny in 30s)`,
-					["✅ Allow once", "🚫 Block"],
-					{ signal: controller.signal },
-				);
-
-				clearTimeout(timeout);
-
-				if (controller.signal.aborted || choice !== "✅ Allow once") {
-					const reason = controller.signal.aborted
-						? "Timed out (30s)"
-						: "Blocked by user";
-					return { block: true, reason: `${action}: ${reason}` };
-				}
-				return undefined;
-			}
-
-			// Standard: offer session-remember options
-			const choice = await ctx.ui.select(
-				`${icon} ${action}\n\n  ${displayCmd}\n\nAllow?`,
-				[
-					"✅ Allow once",
-					"🚫 Block once",
-					`✅✅ Auto-approve "${action}" for this session`,
-					`🚫🚫 Auto-block "${action}" for this session`,
-				],
-			);
-
-			if (!choice || choice.startsWith("🚫🚫")) {
-				sessionBlocked.add(action);
-				ctx.ui.notify(
-					`🚫 All "${action}" commands auto-blocked for this session`,
-					"warning",
-				);
-				return { block: true, reason: `${action} blocked by user (session)` };
-			}
-
-			if (choice.startsWith("🚫")) {
-				return { block: true, reason: `${action} blocked by user` };
-			}
-
-			if (choice.startsWith("✅✅")) {
-				sessionApproved.add(action);
-				ctx.ui.notify(
-					`✅ All "${action}" commands auto-approved for this session`,
-					"info",
-				);
-			}
-
-			return undefined;
+			return await processPatternMatch(action, severity, command, ctx);
 		}
 
 		return undefined;

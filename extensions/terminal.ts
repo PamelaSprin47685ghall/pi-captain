@@ -1,8 +1,81 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@mariozechner/pi-coding-agent";
 import { truncateTail } from "@mariozechner/pi-coding-agent";
 
+function formatOutput(
+	stdout: string | undefined,
+	stderr: string | undefined,
+	code: number,
+): string {
+	return [
+		stdout ? `STDOUT:\n${stdout}` : "",
+		stderr ? `STDERR:\n${stderr}` : "",
+		`Exit code: ${code}`,
+	]
+		.filter(Boolean)
+		.join("\n\n");
+}
+
+function buildFullOutput(
+	args: string,
+	cwd: string,
+	content: string,
+	truncated: boolean,
+	outputLines: number,
+	totalLines: number,
+): string {
+	const header = `$ ${args}  (cwd: ${cwd})`;
+	const footer = truncated
+		? `\n… truncated — showing last ${outputLines} of ${totalLines} lines`
+		: "";
+
+	return `${header}\n${"─".repeat(Math.min(header.length, 80))}\n${content}${footer}`;
+}
+
+function shouldShowAsNotification(content: string): boolean {
+	return content.split("\n").length <= 20 && content.length < 800;
+}
+
+function handleUIOutput(
+	ctx: ExtensionContext,
+	pi: ExtensionAPI,
+	full: string,
+	content: string,
+	code: number,
+): void {
+	if (shouldShowAsNotification(content)) {
+		ctx.ui.notify(full, code === 0 ? "info" : "error");
+	} else {
+		ctx.ui.notify(
+			`Command finished (exit ${code}). Output injected into chat.`,
+			code === 0 ? "info" : "warning",
+		);
+		pi.sendMessage(
+			{
+				customType: "terminal-result",
+				content: `\`\`\`\n${full}\n\`\`\``,
+				display: true,
+			},
+			{ triggerTurn: false },
+		);
+	}
+}
+
+function handleNonUIOutput(pi: ExtensionAPI, full: string): void {
+	pi.sendMessage(
+		{
+			customType: "terminal-result",
+			content: `\`\`\`\n${full}\n\`\`\``,
+			display: true,
+		},
+		{ triggerTurn: false },
+	);
+}
+
 export default function (pi: ExtensionAPI) {
-	const runCommand = async (args: string, ctx: any) => {
+	const runCommand = async (args: string, ctx: ExtensionContext) => {
 		if (!args.trim()) {
 			ctx.ui.notify("Usage: /terminal <command>  or  /t <command>", "warning");
 			return;
@@ -13,13 +86,7 @@ export default function (pi: ExtensionAPI) {
 		try {
 			const result = await pi.exec("bash", ["-c", args], { timeout: 30000 });
 
-			const rawOutput = [
-				result.stdout ? `STDOUT:\n${result.stdout}` : "",
-				result.stderr ? `STDERR:\n${result.stderr}` : "",
-				`Exit code: ${result.code}`,
-			]
-				.filter(Boolean)
-				.join("\n\n");
+			const rawOutput = formatOutput(result.stdout, result.stderr, result.code);
 
 			const { content, truncated, totalLines, outputLines } = truncateTail(
 				rawOutput,
@@ -29,44 +96,22 @@ export default function (pi: ExtensionAPI) {
 				},
 			);
 
-			const header = `$ ${args}  (cwd: ${cwd})`;
-			const footer = truncated
-				? `\n… truncated — showing last ${outputLines} of ${totalLines} lines`
-				: "";
-
-			const full = `${header}\n${"─".repeat(Math.min(header.length, 80))}\n${content}${footer}`;
+			const full = buildFullOutput(
+				args,
+				cwd,
+				content,
+				truncated,
+				outputLines,
+				totalLines,
+			);
 
 			if (ctx.hasUI) {
-				// Show in a dismiss-able notification for short output, else notify + send to chat
-				if (content.split("\n").length <= 20 && content.length < 800) {
-					ctx.ui.notify(full, result.code === 0 ? "info" : "error");
-				} else {
-					ctx.ui.notify(
-						`Command finished (exit ${result.code}). Output injected into chat.`,
-						result.code === 0 ? "info" : "warning",
-					);
-					pi.sendMessage(
-						{
-							customType: "terminal-result",
-							content: `\`\`\`\n${full}\n\`\`\``,
-							display: true,
-						},
-						{ triggerTurn: false },
-					);
-				}
+				handleUIOutput(ctx, pi, full, content, result.code);
 			} else {
-				// Non-interactive mode — always inject into chat
-				pi.sendMessage(
-					{
-						customType: "terminal-result",
-						content: `\`\`\`\n${full}\n\`\`\``,
-						display: true,
-					},
-					{ triggerTurn: false },
-				);
+				handleNonUIOutput(pi, full);
 			}
-		} catch (err: any) {
-			const msg = err?.message ?? String(err);
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : String(err);
 			if (ctx.hasUI) {
 				ctx.ui.notify(`Error running command: ${msg}`, "error");
 			}

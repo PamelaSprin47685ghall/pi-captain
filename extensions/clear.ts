@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 // Shared clear logic — only callable from command context which has newSession/reload
+// biome-ignore lint/suspicious/noExplicitAny: Command context has additional methods not in ExtensionContext
 async function clearSession(ctx: any) {
 	await ctx.waitForIdle();
 	await ctx.newSession();
@@ -25,11 +26,12 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	// Intercept bare "c" or "clear" typed as a plain message (no slash prefix)
-	pi.on("user_message", async (event, ctx) => {
+	pi.on("input", async (event, ctx) => {
 		const trimmed = event.text.trim().toLowerCase();
 		if (trimmed === "c" || trimmed === "clear") {
+			// clearSession calls reload(), so we don't need to block — the session
+			// is recreated before the LLM ever sees the message.
 			await clearSession(ctx);
-			return { block: true, reason: "Handled as clear shortcut" };
 		}
 	});
 }

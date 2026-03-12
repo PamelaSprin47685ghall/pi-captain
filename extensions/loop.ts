@@ -7,39 +7,28 @@
 // The LLM gets a `loop_control` tool to signal progress/completion.
 // Ctrl+Shift+X to abort at any time.
 
-import { StringEnum } from "@mariozechner/pi-ai";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
-import { Key, Text } from "@mariozechner/pi-tui";
-import { Type } from "@sinclair/typebox";
-
-type LoopMode = "goal" | "passes" | "pipeline";
-
-interface LoopState {
-	active: boolean;
-	mode: LoopMode;
-	currentStep: number;
-	maxSteps: number; // Infinity for goal mode, N for passes, stages.length for pipeline
-	goal: string; // User's description of what we're doing
-	stages: string[]; // Pipeline stages (or single repeated task)
-	done: boolean; // LLM signaled completion
-	reasonDone: string; // Why the LLM stopped
-}
-
-function emptyState(): LoopState {
-	return {
-		active: false,
-		mode: "goal",
-		currentStep: 0,
-		maxSteps: 0,
-		goal: "",
-		stages: [],
-		done: false,
-		reasonDone: "",
-	};
-}
+import { Key } from "@mariozechner/pi-tui";
+import {
+	buildPrompt,
+	emptyState,
+	getSystemPromptAddition,
+	type LoopMode,
+	type LoopState,
+	parseGoalArgs,
+	parsePassesArgs,
+	parsePipelineArgs,
+	updateWidget,
+} from "./loop-state.js";
+import {
+	getLoopControlToolDefinition,
+	handleLoopControlTool,
+	renderLoopControlCall,
+	renderLoopControlResult,
+} from "./loop-tool.js";
 
 export default function (pi: ExtensionAPI) {
 	let state = emptyState();
@@ -62,217 +51,34 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_fork", async (_e, ctx) => reconstruct(ctx));
 	pi.on("session_tree", async (_e, ctx) => reconstruct(ctx));
 
-	// ── Widget: show loop progress in the panel above the editor ─────────
-	function updateWidget(ctx: ExtensionContext) {
-		if (!state.active) {
-			ctx.ui.setStatus("loop", undefined);
-			ctx.ui.setWidget("loop", undefined);
-			return;
-		}
-
-		const label =
-			state.mode === "pipeline"
-				? `stage ${state.currentStep + 1}/${state.stages.length}: ${state.stages[state.currentStep] ?? "?"}`
-				: state.mode === "passes"
-					? `pass ${state.currentStep + 1}/${state.maxSteps}`
-					: `iteration ${state.currentStep + 1} (until goal met)`;
-
-		ctx.ui.setStatus("loop", `🔄 ${label}`);
-		ctx.ui.setWidget("loop", [
-			`┌─ Loop: ${state.mode} ──────────`,
-			`│ ${state.goal}`,
-			`│ ${label}`,
-			`└─ Ctrl+Shift+X to stop ────────`,
-		]);
-	}
-
-	// ── Build the steer message for the current iteration ────────────────
-	function buildPrompt(): string {
-		const step = state.currentStep;
-
-		if (state.mode === "pipeline") {
-			const stage = state.stages[step];
-			const remaining = state.stages.length - step - 1;
-			return [
-				`## Loop — Pipeline stage ${step + 1}/${state.stages.length}`,
-				`Overall goal: ${state.goal}`,
-				`Current stage: **${stage}**`,
-				remaining > 0
-					? `Remaining stages: ${state.stages.slice(step + 1).join(" → ")}`
-					: `This is the **final stage**. Call loop_control with status "done" when complete.`,
-				`\nExecute this stage now. When finished, call loop_control with status "done" if this is the last stage, or "next" to advance.`,
-			].join("\n");
-		}
-
-		if (state.mode === "passes") {
-			return [
-				`## Loop — Pass ${step + 1} of ${state.maxSteps}`,
-				`Task: ${state.goal}`,
-				step === 0
-					? `This is the first pass. Do an initial implementation/analysis.`
-					: step < state.maxSteps - 1
-						? `This is a refinement pass. Review and improve on the previous pass.`
-						: `This is the **final pass**. Do a final polish, then call loop_control with status "done".`,
-				`\nWhen this pass is complete, call loop_control with status "next" (or "done" on the final pass).`,
-			].join("\n");
-		}
-
-		// Goal mode — open-ended
-		return [
-			`## Loop — Iteration ${step + 1}`,
-			`Goal: ${state.goal}`,
-			`Work toward the goal. When the goal is fully met, call loop_control with status "done" and explain why.`,
-			`If more work is needed, call loop_control with status "next" describing what's left.`,
-		].join("\n");
-	}
-
 	// ── Core: auto-advance after each agent turn ────────────────────────
-	pi.on("agent_end", async (_e, ctx) => {
+	pi.on("agent_end", async (_e, _ctx) => {
 		if (!state.active || state.done) return;
-
-		// Safety: if LLM didn't call loop_control, nudge it
-		// (This handles cases where the LLM forgets to call the tool)
-		// We give one grace turn, then auto-advance
+		// Grace hook: LLM is nudged via system prompt to call loop_control;
+		// no auto-advance needed here — the tool handles progression.
 	});
 
 	// ── Tool: the LLM calls this to signal progress ─────────────────────
 	pi.registerTool({
-		name: "loop_control",
-		label: "Loop Control",
-		description: [
-			"Signal loop progress. Call this when you finish a loop iteration.",
-			"status 'next': advance to the next step/pass/stage.",
-			"status 'done': the goal is met or the final stage/pass is complete.",
-			"Only available when a loop is active.",
-		].join(" "),
-		parameters: Type.Object({
-			status: StringEnum(["next", "done"] as const),
-			summary: Type.String({
-				description: "Brief summary of what was accomplished this iteration",
-			}),
-			reason: Type.Optional(
-				Type.String({ description: "Why the goal is met (for 'done')" }),
-			),
-		}),
-
+		...getLoopControlToolDefinition(),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
-			if (!state.active) {
-				return {
-					content: [
-						{ type: "text", text: "No active loop. Start one with /loop." },
-					],
-					isError: true,
-				};
-			}
-
-			if (params.status === "done") {
-				// LLM says we're done
-				state.done = true;
-				state.reasonDone = params.reason ?? params.summary;
-				state.active = false;
-				updateWidget(ctx);
-
-				return {
-					content: [
-						{
-							type: "text",
-							text: `✓ Loop complete after ${state.currentStep + 1} iteration(s). Reason: ${state.reasonDone}`,
-						},
-					],
-					details: { ...state } as LoopState,
-				};
-			}
-
-			// status === "next" — advance
-			state.currentStep++;
-
-			// Check if we've hit the limit
-			const atEnd =
-				state.mode === "passes"
-					? state.currentStep >= state.maxSteps
-					: state.mode === "pipeline"
-						? state.currentStep >= state.stages.length
-						: false; // goal mode has no limit
-
-			if (atEnd) {
-				state.done = true;
-				state.active = false;
-				state.reasonDone = `Completed all ${state.mode === "passes" ? "passes" : "stages"}`;
-				updateWidget(ctx);
-
-				return {
-					content: [
-						{
-							type: "text",
-							text: `✓ Loop complete — all ${state.maxSteps} iterations done.`,
-						},
-					],
-					details: { ...state } as LoopState,
-				};
-			}
-
-			// Continue: inject the next iteration prompt
-			updateWidget(ctx);
-
-			// Schedule the next iteration as a steer message
-			// (runs after this tool result is processed)
-			setTimeout(() => {
-				pi.sendMessage(
-					{
-						customType: "loop-iteration",
-						content: buildPrompt(),
-						display: false,
-					},
-					{ triggerTurn: true, deliverAs: "steer" },
-				);
-			}, 100);
-
+			const result = handleLoopControlTool(params, state, pi, ctx);
+			state = result.newState;
+			updateWidget(state, ctx);
 			return {
-				content: [
-					{
-						type: "text",
-						text: `→ Advancing to step ${state.currentStep + 1}. Summary: ${params.summary}`,
-					},
-				],
-				details: { ...state } as LoopState,
+				content: result.content,
+				details: result.details,
 			};
 		},
-
-		renderCall: (args, theme) =>
-			new Text(
-				theme.fg("toolTitle", theme.bold("loop_control ")) +
-					theme.fg(args.status === "done" ? "success" : "accent", args.status),
-				0,
-				0,
-			),
-		renderResult: (result, _opts, theme) => {
-			const d = result.details as LoopState | undefined;
-			if (!d) return new Text("", 0, 0);
-			const icon = d.done ? "✓" : "→";
-			const color = d.done ? "success" : "accent";
-			return new Text(
-				theme.fg(color, `${icon} step ${d.currentStep + 1} — ${d.mode}`),
-				0,
-				0,
-			);
-		},
+		renderCall: renderLoopControlCall,
+		renderResult: renderLoopControlResult,
 	});
 
 	// ── Inject loop context into the system prompt ───────────────────────
 	pi.on("before_agent_start", async (event, _ctx) => {
 		if (!state.active) return;
 		return {
-			systemPrompt:
-				event.systemPrompt +
-				[
-					"",
-					"",
-					"## Active Loop",
-					`Mode: ${state.mode} | Step: ${state.currentStep + 1}/${state.maxSteps === Infinity ? "∞" : state.maxSteps}`,
-					`Goal: ${state.goal}`,
-					"You MUST call `loop_control` when you finish your work for this iteration.",
-					'Use status "next" to advance or "done" when the goal is fully met.',
-				].join("\n"),
+			systemPrompt: event.systemPrompt + getSystemPromptAddition(state),
 		};
 	});
 
@@ -311,69 +117,14 @@ export default function (pi: ExtensionAPI) {
 			const parts = args.trim().split(/\s+/);
 			const mode = parts[0] as LoopMode;
 
+			let result: LoopState | string;
+
 			if (mode === "goal") {
-				const goal = parts.slice(1).join(" ");
-				if (!goal) {
-					ctx.ui.notify("Provide a goal description", "error");
-					return;
-				}
-				state = {
-					active: true,
-					mode: "goal",
-					currentStep: 0,
-					maxSteps: Infinity,
-					goal,
-					stages: [],
-					done: false,
-					reasonDone: "",
-				};
+				result = parseGoalArgs(parts);
 			} else if (mode === "passes") {
-				const n = parseInt(parts[1], 10);
-				if (!n || n < 1) {
-					ctx.ui.notify("Provide a valid number of passes", "error");
-					return;
-				}
-				const task = parts.slice(2).join(" ");
-				if (!task) {
-					ctx.ui.notify("Provide a task description", "error");
-					return;
-				}
-				state = {
-					active: true,
-					mode: "passes",
-					currentStep: 0,
-					maxSteps: n,
-					goal: task,
-					stages: [],
-					done: false,
-					reasonDone: "",
-				};
+				result = parsePassesArgs(parts);
 			} else if (mode === "pipeline") {
-				// First arg after "pipeline" is pipe-separated stages, rest is the goal
-				const stagesStr = parts[1];
-				if (!stagesStr) {
-					ctx.ui.notify("Provide stages separated by |", "error");
-					return;
-				}
-				const stages = stagesStr
-					.split("|")
-					.map((s) => s.trim())
-					.filter(Boolean);
-				if (stages.length === 0) {
-					ctx.ui.notify("Need at least one stage", "error");
-					return;
-				}
-				const goal = parts.slice(2).join(" ") || stages.join(" → ");
-				state = {
-					active: true,
-					mode: "pipeline",
-					currentStep: 0,
-					maxSteps: stages.length,
-					goal,
-					stages,
-					done: false,
-					reasonDone: "",
-				};
+				result = parsePipelineArgs(parts);
 			} else {
 				ctx.ui.notify(
 					`Unknown mode "${mode}". Use: goal, passes, or pipeline`,
@@ -382,9 +133,15 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			updateWidget(ctx);
+			if (typeof result === "string") {
+				ctx.ui.notify(result, "error");
+				return;
+			}
+
+			state = result;
+			updateWidget(state, ctx);
 			// Kick off the first iteration
-			pi.sendUserMessage(buildPrompt());
+			pi.sendUserMessage(buildPrompt(state));
 		},
 	});
 
@@ -399,7 +156,7 @@ export default function (pi: ExtensionAPI) {
 			state.active = false;
 			state.done = true;
 			state.reasonDone = "Stopped by user";
-			updateWidget(ctx);
+			updateWidget(state, ctx);
 			ctx.ui.notify(
 				`Loop stopped after ${state.currentStep + 1} iteration(s)`,
 				"warning",
@@ -415,7 +172,7 @@ export default function (pi: ExtensionAPI) {
 			state.active = false;
 			state.done = true;
 			state.reasonDone = "Stopped by shortcut";
-			updateWidget(ctx);
+			updateWidget(state, ctx);
 			ctx.abort(); // also abort the current LLM turn
 			ctx.ui.notify("Loop aborted", "warning");
 		},
