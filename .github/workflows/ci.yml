@@ -82,8 +82,8 @@ jobs:
       - name: Parse coverage and update README badges
         run: |
           COVERAGE=$(bun test --coverage extensions/ 2>&1)
-          LINES=$(echo "$COVERAGE" | grep "All files" | awk '{print $3}')
-          BRANCHES=$(echo "$COVERAGE" | grep "All files" | awk '{print $4}')
+          LINES=$(echo "$COVERAGE"   | grep "All files" | awk -F'|' '{gsub(/ /,"",$2); print $2}')
+          BRANCHES=$(echo "$COVERAGE" | grep "All files" | awk -F'|' '{gsub(/ /,"",$3); print $3}')
 
           # Pick badge color using pure bash integer comparison (no bc needed)
           color() {
