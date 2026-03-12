@@ -18,8 +18,8 @@ import {
 	SessionManager,
 	SettingsManager,
 } from "@mariozechner/pi-coding-agent";
+import type { Step } from "../core/types.js";
 import { resolveModel } from "../core/utils/model.js";
-import type { Step } from "../types.js";
 import type { ExecutorContext } from "./runner.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: tool schemas vary per tool

@@ -1,6 +1,6 @@
 // ── ui/widget-pending.ts — Pending step computation helpers ─────────────────
 
-import type { Runnable, StepResult } from "../types.js";
+import type { Runnable, StepResult } from "../core/types.js";
 import { renderStepLines } from "./widget-render.js";
 
 export interface PendingEntry {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Gate, Step } from "../types.js";
+import type { Gate, Step } from "../core/types.js";
 import { deserializeRunnable } from "./deserialize.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────

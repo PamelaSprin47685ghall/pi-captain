@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import type { GateCtx } from "../types.js";
+import type { GateCtx } from "../core/types.js";
 import {
 	allOf,
 	bunTest,

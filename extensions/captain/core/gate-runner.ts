@@ -5,7 +5,7 @@
 //   throw  → failed — error.message becomes the reason
 
 import { err, ok, type Result } from "neverthrow";
-import type { Gate, GateCtx } from "../types.js";
+import type { Gate, GateCtx } from "../core/types.js";
 
 export interface GateResult {
 	readonly passed: boolean;

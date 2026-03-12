@@ -1,0 +1,13 @@
+{
+	"$comment": "Shared compiler options inherited by all per-layer tsconfig.json files.",
+	"compilerOptions": {
+		"strict": true,
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"target": "esnext",
+		"skipLibCheck": true,
+		"isolatedModules": true,
+		"declaration": true,
+		"declarationMap": true
+	}
+}

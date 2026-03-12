@@ -1,8 +1,8 @@
 // ── steps/runner-impl.ts — Private runPrompt & handleFailure helpers ────────
 // Extracted from runner.ts to stay within the 200-line limit (Basic_knowledge.md).
 import { appendFileSync } from "node:fs";
+import type { GateCtx, Step } from "../core/types.js";
 import { type GateResult, runGate } from "../gates/index.js";
-import type { GateCtx, Step } from "../types.js";
 import type { ExecutorContext } from "./executor-context.js";
 import type { AgentSession } from "./session.js";
 
@@ -112,7 +112,6 @@ export async function handleFailure(
 	switch (decision.action) {
 		case "retry": {
 			if (retryCount >= MAX_EXECUTOR_RETRIES) {
-				console.warn(`[captain] hard retry cap reached for "${step.label}"`);
 				return {
 					status: "failed",
 					output: lastOutput,

@@ -3,7 +3,7 @@
 
 import type { Api, Model } from "@mariozechner/pi-ai";
 import type { DefaultResourceLoader } from "@mariozechner/pi-coding-agent";
-import type { ModelRegistryLike, StepResult } from "../types.js";
+import type { ModelRegistryLike, StepResult } from "../core/types.js";
 
 /** Everything the executor needs from the host environment */
 export interface ExecutorContext {

@@ -1,8 +1,8 @@
 // ── ui/commands-register-a.ts — /captain /captain-run /captain-load ─────────
 // Extracted from commands.ts (Basic_knowledge.md ≤200 lines rule).
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { PipelineState } from "../core/types.js";
 import type { CaptainState } from "../state.js";
-import type { PipelineState } from "../types.js";
 import {
 	runInteractivePipelineLauncher,
 	runRunnableFromCommand,

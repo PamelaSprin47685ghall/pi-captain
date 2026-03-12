@@ -1,7 +1,7 @@
 // ── ui/widget-render.ts — Step-level pure rendering helpers ──────────────────
 
 import { truncateToWidth } from "@mariozechner/pi-tui";
-import type { StepResult } from "../types.js";
+import type { StepResult } from "../core/types.js";
 
 /** Map step status to theme color name */
 export function statusColor(status: string): string {

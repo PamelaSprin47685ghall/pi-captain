@@ -2,7 +2,7 @@
 
 import type { Api, Model } from "@mariozechner/pi-ai";
 import { complete } from "@mariozechner/pi-ai";
-import type { MergeFn } from "../types.js";
+import type { MergeFn } from "../core/types.js";
 
 export interface MergeCtx {
 	model: Model<Api>;

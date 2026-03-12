@@ -2,7 +2,7 @@
 // No I/O. Takes a Runnable, returns a ValidationResult.
 // Extracted from tools/validate.ts to stay ≤ 200 lines (Basic_knowledge.md).
 
-import type { Runnable } from "../types.js";
+import type { Runnable } from "../core/types.js";
 
 export interface ValidationResult {
 	readonly valid: boolean;

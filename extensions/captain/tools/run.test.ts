@@ -6,10 +6,10 @@
 // guard block that sits in front of the existing pipeline-lookup logic.
 
 import { describe, expect, mock, test } from "bun:test";
+import type { Runnable } from "../core/types.js";
 import { skip } from "../gates/on-fail.js";
 import type { CaptainState } from "../state.js";
 import { full } from "../transforms/presets.js";
-import type { Runnable } from "../types.js";
 
 // ── Module mocks ───────────────────────────────────────────────────────────
 // Prevent real filesystem / LLM calls inside the tool's execute path.

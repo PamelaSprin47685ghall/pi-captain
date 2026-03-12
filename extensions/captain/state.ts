@@ -9,10 +9,10 @@ import {
 } from "./core/contract.js";
 import { deserializeRunnable } from "./core/deserialize.js";
 import type { FsPort } from "./core/ports.js";
+import type { PipelineState, Runnable } from "./core/types.js";
 import { describeRunnable } from "./core/utils/index.js";
 import { realFs } from "./infra/fs.js";
 import { loadTsPipelineFile } from "./shell/ts-loader.js";
-import type { PipelineState, Runnable } from "./types.js";
 
 export class CaptainState {
 	pipelines: Record<string, { spec: Runnable }> = {};

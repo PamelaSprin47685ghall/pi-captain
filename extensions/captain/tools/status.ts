@@ -1,9 +1,9 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import type { PipelineState, StepResult } from "../core/types.js";
 import { statusIcon } from "../core/utils/index.js";
 import type { CaptainState } from "../state.js";
-import type { PipelineState, StepResult } from "../types.js";
 
 // ── Formatting helpers ─────────────────────────────────────────────────────
 

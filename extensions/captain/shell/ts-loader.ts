@@ -5,7 +5,7 @@
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type { FsPort } from "../core/ports.js";
-import type { Runnable } from "../types.js";
+import type { Runnable } from "../core/types.js";
 
 const ALIAS_BRACKETS = `"<captain>/`;
 const ALIAS_NO_BRACKETS = `"captain/`;

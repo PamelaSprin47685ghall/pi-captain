@@ -11,8 +11,14 @@ pre-commit:
       glob: "*.test.ts"
       run: |
         for f in {staged_files}; do
-          src="${f%.test.ts}.ts"
-          [ -f "$src" ] || (echo "Orphaned test (no matching source): $f" && exit 1)
+          dir=$(dirname "$f")
+          # A test file is orphaned if its directory contains NO non-test .ts source files.
+          # This allows foo-extra.test.ts alongside foo.ts, and arch.test.ts at a package root.
+          sources=$(find "$dir" -maxdepth 1 -name "*.ts" ! -name "*.test.ts" ! -name "*.d.ts" 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$sources" -eq 0 ]; then
+            echo "❌ Orphaned test (no source files in same directory): $f"
+            exit 1
+          fi
         done
     line-limit:
       run: |

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Runnable, Step } from "../../types.js";
+import type { Runnable, Step } from "../../core/types.js";
 import {
 	collectAgentRefs,
 	collectStepLabels,

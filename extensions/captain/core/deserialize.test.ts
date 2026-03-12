@@ -6,7 +6,7 @@ import type {
 	Runnable,
 	Step,
 	Transform,
-} from "../types.js";
+} from "../core/types.js";
 import { deserializeRunnable } from "./deserialize.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────

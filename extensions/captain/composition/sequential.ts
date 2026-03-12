@@ -1,14 +1,14 @@
 // ── Sequential Pipeline Execution ─────────────────────────────────────────
 // Steps run one after another, with output of each feeding into the next
 
-import { applyTransform, runContainerGate } from "../shell/execution.js";
+import type { Runnable, Sequential, StepResult } from "../core/types.js";
 import {
 	type ExecutorContext,
 	executeStep,
 	prefetchSession,
 	type WarmSession,
 } from "../steps/runner.js";
-import type { Runnable, Sequential, StepResult } from "../types.js";
+import { applyTransform, runContainerGate } from "./execution.js";
 
 /**
  * Execute a sequential pipeline with 1-step lookahead prefetch optimization.

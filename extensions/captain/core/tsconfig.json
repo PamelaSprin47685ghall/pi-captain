@@ -1,0 +1,10 @@
+{
+	"$comment": "FC/IS enforcement — core has NO references: it cannot import from infra/ or shell/ at the project level.",
+	"extends": "../../../tsconfig.base.json",
+	"compilerOptions": {
+		"composite": true,
+		"outDir": ".tsbuild"
+	},
+	"include": ["./**/*.ts"],
+	"references": []
+}

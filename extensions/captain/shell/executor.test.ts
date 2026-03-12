@@ -4,11 +4,11 @@
 // paths, gate/onFail behaviour, $INPUT/$ORIGINAL interpolation, and transform.
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { concat, firstPass } from "../core/merge.js";
+import type { Parallel, Pool, Sequential, Step } from "../core/types.js";
 import { skip, warn } from "../gates/on-fail.js";
 import { extract, full } from "../transforms/presets.js";
-import type { Parallel, Pool, Sequential, Step } from "../types.js";
 import type { ExecutorContext } from "./executor.js";
-import { concat, firstPass } from "./merge.js";
 
 // ── Shared mutable session config ──────────────────────────────────────────
 // All mock sessions read from this object so individual tests can customise

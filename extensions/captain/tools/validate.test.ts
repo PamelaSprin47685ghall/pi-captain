@@ -138,7 +138,7 @@ describe("captain_validate tool", () => {
 				kind: "step",
 				label: "Test Step",
 				prompt: "Do something",
-			} as import("../types.js").Runnable,
+			} as import("../core/types.js").Runnable,
 		};
 
 		const result = await pi.lastTool.execute(

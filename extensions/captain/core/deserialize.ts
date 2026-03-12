@@ -6,15 +6,6 @@
 // OnFail JSON shape: { action: "retry" | "retryWithDelay" | "skip" | "warn" | "fallback", max?, delayMs? }
 // retryWithDelay is sugar: deserialized to retryWithDelay(max, delayMs) preset.
 
-import {
-	fallback,
-	retry,
-	retryWithDelay,
-	skip,
-	warn,
-} from "../gates/on-fail.js";
-import { command, file, regexCI, user } from "../gates/presets.js";
-import { extract, full, summarize } from "../transforms/presets.js";
 import type {
 	Gate,
 	MergeFn,
@@ -22,8 +13,11 @@ import type {
 	Runnable,
 	Step,
 	Transform,
-} from "../types.js";
+} from "../core/types.js";
+import { command, file, regexCI, user } from "./gate-presets.js";
 import { mergeFromStrategy } from "./merge.js";
+import { fallback, retry, retryWithDelay, skip, warn } from "./on-fail.js";
+import { extract, full, summarize } from "./transform-presets.js";
 
 // ── Gate deserialization ──────────────────────────────────────────────────
 

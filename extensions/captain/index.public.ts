@@ -16,6 +16,19 @@ export {
 	rank,
 	vote,
 } from "./core/merge.js";
+// ── Core Types ─────────────────────────────────────────────────────────────
+export type {
+	Gate,
+	MergeFn,
+	ModelId,
+	OnFail,
+	Parallel,
+	Pool,
+	Runnable,
+	Sequential,
+	Step,
+	Transform,
+} from "./core/types.js";
 // ── LLM Gates ──────────────────────────────────────────────────────────────
 export { llmFast } from "./gates/llm.js";
 // ── OnFail Presets ─────────────────────────────────────────────────────────
@@ -41,17 +54,3 @@ export {
 	full,
 	summarize,
 } from "./transforms/presets.js";
-
-// ── Core Types ─────────────────────────────────────────────────────────────
-export type {
-	Gate,
-	MergeFn,
-	ModelId,
-	OnFail,
-	Parallel,
-	Pool,
-	Runnable,
-	Sequential,
-	Step,
-	Transform,
-} from "./types.js";

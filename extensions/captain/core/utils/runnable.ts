@@ -1,7 +1,7 @@
 // ── Runnable Tree Utilities ────────────────────────────────────────────────
 // Pure functions for traversing, describing, and querying Runnable trees.
 
-import type { Gate, OnFail, Runnable } from "../../types.js";
+import type { Gate, OnFail, Runnable } from "../../core/types.js";
 
 /** Find the first step in a Runnable tree whose label matches (case-insensitive substring) */
 export function findStepByLabel(

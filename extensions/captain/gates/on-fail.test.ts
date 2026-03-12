@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Step } from "../types.js";
+import type { Step } from "../core/types.js";
 import { fallback, retry, retryWithDelay, skip, warn } from "./on-fail.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────

@@ -2,15 +2,15 @@
 // Run the same step N times in parallel branches (git worktrees)
 
 import type { MergeCtx } from "../core/merge.js";
+import type { Pool, Runnable, StepResult } from "../core/types.js";
 import {
 	commitWorktreeChanges,
 	createWorktree,
 	isGitRepo,
 	removeWorktree,
 } from "../infra/worktree.js";
-import { applyTransform, runContainerGate } from "../shell/execution.js";
 import type { ExecutorContext } from "../steps/runner.js";
-import type { Pool, Runnable, StepResult } from "../types.js";
+import { applyTransform, runContainerGate } from "./execution.js";
 
 function getLabel(r: Runnable): string {
 	switch (r.kind) {
@@ -44,7 +44,6 @@ async function saveWorktreeOutput(
 		signal,
 	);
 	if (committed) {
-		console.log(`[captain] 💾 worker output saved → branch: ${wt.branchName}`);
 		const entry = worktrees.find((w) => w.path === wt.worktreePath);
 		if (entry) entry.keep = true;
 	}

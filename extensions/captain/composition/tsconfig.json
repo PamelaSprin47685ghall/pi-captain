@@ -1,0 +1,11 @@
+{
+	"extends": "../../../tsconfig.base.json",
+	"compilerOptions": { "composite": true, "outDir": ".tsbuild" },
+	"include": ["./**/*.ts"],
+	"references": [
+		{ "path": "../core" },
+		{ "path": "../infra" },
+		{ "path": "../gates" },
+		{ "path": "../steps" }
+	]
+}

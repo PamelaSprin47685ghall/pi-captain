@@ -4,7 +4,7 @@
 
 import type { Api, Model } from "@mariozechner/pi-ai";
 import { complete } from "@mariozechner/pi-ai";
-import type { Gate, GateCtx } from "../types.js";
+import type { Gate, GateCtx } from "../core/types.js";
 
 /** LLM gate using a fast/cheap model */
 export function llmFast(prompt: string, threshold = 0.7): Gate {

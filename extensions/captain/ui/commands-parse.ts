@@ -1,10 +1,11 @@
 // ── ui/commands-parse.ts — Parsing helpers for slash commands ───────────────
 // Extracted from commands.ts to stay within 200-line limit (Basic_knowledge.md).
+
+import type { Runnable, Step } from "../core/types.js";
 import { collectStepLabels, findStepByLabel } from "../core/utils/index.js";
 import { skip } from "../gates/on-fail.js";
 import type { CaptainState } from "../state.js";
 import { full } from "../transforms/presets.js";
-import type { Runnable, Step } from "../types.js";
 
 type NotifyFn = (msg: string, level: "info" | "error") => void;
 

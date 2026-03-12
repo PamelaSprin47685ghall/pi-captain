@@ -7,10 +7,10 @@ import type {
 	ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 import * as piSdk from "@mariozechner/pi-coding-agent";
-import type { ExecutorContext } from "../core/executor.js";
-import { executeRunnable } from "../core/executor.js";
+import type { PipelineState, StepResult } from "../core/types.js";
+import type { ExecutorContext } from "../shell/executor.js";
+import { executeRunnable } from "../shell/executor.js";
 import type { CaptainState } from "../state.js";
-import type { PipelineState, StepResult } from "../types.js";
 import { text } from "./helpers.js";
 
 export type ExecCtx = ExtensionContext;

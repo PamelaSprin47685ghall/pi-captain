@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Gate, GateCtx } from "../types.js";
+import type { Gate, GateCtx } from "../core/types.js";
 import { runGate } from "./gate-runner.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────

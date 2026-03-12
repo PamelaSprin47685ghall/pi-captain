@@ -10,8 +10,8 @@ import type {
 
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import type { PipelineState } from "../core/types.js";
 import type { CaptainState } from "../state.js";
-import type { PipelineState } from "../types.js";
 import {
 	buildPipelineSelectOptions,
 	parsePipelineSelectOption,

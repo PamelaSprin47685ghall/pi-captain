@@ -1,15 +1,16 @@
-// ── Recursive Pipeline Execution Engine ────────────────────────────────────
-// Each Step runs via the pi SDK (createAgentSession) — no subprocess needed.
+// ── Recursive Pipeline Execution Engine (shell layer) ──────────────────────
+// Orchestrates composition/* and steps/* — all impure. Lives in shell/ because
+// it calls into side-effectful layers; pure logic belongs in core/.
 
 import { executeParallel } from "../composition/parallel.js";
 import { executePool } from "../composition/pool.js";
 import { executeSequential } from "../composition/sequential.js";
+import type { Runnable, StepResult } from "../core/types.js";
 import { type ExecutorContext, executeStep } from "../steps/runner.js";
-import type { Runnable, StepResult } from "../types.js";
 
 // Re-export interfaces for public API
 export type { ExecutorContext };
-export type { ModelRegistryLike } from "../types.js";
+export type { ModelRegistryLike } from "../core/types.js";
 
 /** Execute any Runnable recursively, returning output text */
 export async function executeRunnable(

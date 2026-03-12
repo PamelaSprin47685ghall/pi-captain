@@ -5,9 +5,9 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import type { Runnable } from "../core/types.js";
 import { validateRunnable } from "../core/validate.js";
 import type { CaptainState } from "../state.js";
-import type { Runnable } from "../types.js";
 
 export function registerValidateTool(pi: ExtensionAPI, state: CaptainState) {
 	pi.registerTool({
