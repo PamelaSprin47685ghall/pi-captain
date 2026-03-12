@@ -78,6 +78,7 @@ mock.module("../infra/worktree.js", () => ({
 	removeWorktree: async () => {
 		/* test stub */
 	},
+	commitWorktreeChanges: async () => false,
 	isGitRepo: async () => false,
 }));
 

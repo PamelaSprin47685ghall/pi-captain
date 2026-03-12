@@ -85,13 +85,66 @@ export async function createWorktree(
 	}
 }
 
-/** Remove a worktree and delete its branch */
+/**
+ * Commit all changes in a worktree if there are any.
+ * Returns true if a commit was made, false if the worktree was clean.
+ * Should only be called after a worker succeeds — never on crash.
+ */
+export async function commitWorktreeChanges(
+	exec: ExecFn,
+	worktreePath: string,
+	label: string,
+	signal?: AbortSignal,
+): Promise<boolean> {
+	try {
+		const { stdout } = await exec(
+			"git",
+			["-C", worktreePath, "status", "--porcelain"],
+			{ signal },
+		);
+		if (!stdout.trim()) return false; // nothing to commit
+
+		await exec("git", ["-C", worktreePath, "add", "-A"], { signal });
+		await exec(
+			"git",
+			["-C", worktreePath, "commit", "-m", `captain: ${label} output`],
+			{ signal },
+		);
+		return true;
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		console.warn(`[captain] commit failed for "${worktreePath}": ${msg}`);
+		return false;
+	}
+}
+
+async function deleteBranch(
+	exec: ExecFn,
+	cwd: string,
+	branchName: string,
+	signal?: AbortSignal,
+): Promise<void> {
+	try {
+		await exec("git", ["-C", cwd, "branch", "-D", branchName], { signal });
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		if (!(msg.includes("not found") || msg.includes("error: branch"))) {
+			console.warn(
+				`[captain] branch delete failed for "${branchName}": ${msg}`,
+			);
+		}
+	}
+}
+
+/** Remove a worktree and optionally delete its branch */
 export async function removeWorktree(
 	exec: ExecFn,
 	cwd: string,
 	worktreePath: string,
 	branchName: string,
 	signal?: AbortSignal,
+	/** If true, keep the branch in git history (work was committed) */
+	keepBranch = false,
 ): Promise<void> {
 	try {
 		await exec(
@@ -111,18 +164,8 @@ export async function removeWorktree(
 		}
 	}
 
-	// Always attempt to delete branch, even if worktree removal failed
-	try {
-		await exec("git", ["-C", cwd, "branch", "-D", branchName], { signal });
-	} catch (err) {
-		// Branch may already be deleted — only warn if it's an unexpected error
-		const msg = err instanceof Error ? err.message : String(err);
-		if (!(msg.includes("not found") || msg.includes("error: branch"))) {
-			console.warn(
-				`[captain] branch delete failed for "${branchName}": ${msg}`,
-			);
-		}
-	}
+	// Delete branch unless work was committed — in that case keep it for recovery
+	if (!keepBranch) await deleteBranch(exec, cwd, branchName, signal);
 }
 
 /** Sequential cleanup with final prune to ensure git state stays clean */

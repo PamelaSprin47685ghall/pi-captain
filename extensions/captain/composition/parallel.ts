@@ -3,6 +3,7 @@
 
 import type { MergeCtx } from "../core/merge.js";
 import {
+	commitWorktreeChanges,
 	createWorktree,
 	isGitRepo,
 	removeWorktree,
@@ -26,6 +27,29 @@ function getLabel(r: Runnable): string {
 	}
 }
 
+type WorktreeEntry = { path: string; branch: string; keep?: boolean };
+
+/** Commit worker output and mark the branch for preservation if files changed. */
+async function saveWorktreeOutput(
+	exec: Parameters<typeof commitWorktreeChanges>[0],
+	wt: { worktreePath: string; branchName: string },
+	label: string,
+	worktrees: WorktreeEntry[],
+	signal?: AbortSignal,
+): Promise<void> {
+	const committed = await commitWorktreeChanges(
+		exec,
+		wt.worktreePath,
+		label,
+		signal,
+	);
+	if (committed) {
+		console.log(`[captain] 💾 worker output saved → branch: ${wt.branchName}`);
+		const entry = worktrees.find((w) => w.path === wt.worktreePath);
+		if (entry) entry.keep = true;
+	}
+}
+
 /**
  * Execute a parallel pipeline with git worktree isolation.
  * Runs different steps in parallel, each in its own git worktree.
@@ -42,7 +66,7 @@ export async function executeParallel(
 		ectx: ExecutorContext,
 	) => Promise<{ output: string; results: StepResult[] }>,
 ): Promise<{ output: string; results: StepResult[] }> {
-	const worktrees: { path: string; branch: string }[] = [];
+	const worktrees: WorktreeEntry[] = [];
 	const allResults: StepResult[] = [];
 
 	try {
@@ -67,7 +91,12 @@ export async function executeParallel(
 				cwd: wt?.worktreePath ?? ectx.cwd,
 				stepGroup: parGroup,
 			};
-			return executeRunnable(step, input, original, branchCtx);
+			const result = await executeRunnable(step, input, original, branchCtx);
+			// Commit any file changes produced by this worker (only on success —
+			// if executeRunnable threw, we never reach this line).
+			if (wt)
+				await saveWorktreeOutput(ectx.exec, wt, label, worktrees, ectx.signal);
+			return result;
 		});
 
 		const settled = await Promise.allSettled(promises);
@@ -106,9 +135,17 @@ export async function executeParallel(
 		return checked;
 	} finally {
 		// Remove all worktrees in parallel instead of sequentially.
+		// Branches that have a commit are kept in git history for recovery.
 		await Promise.all(
 			worktrees.map((wt) =>
-				removeWorktree(ectx.exec, ectx.cwd, wt.path, wt.branch, ectx.signal),
+				removeWorktree(
+					ectx.exec,
+					ectx.cwd,
+					wt.path,
+					wt.branch,
+					ectx.signal,
+					wt.keep === true,
+				),
 			),
 		);
 	}
