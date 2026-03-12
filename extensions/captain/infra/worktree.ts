@@ -77,6 +77,7 @@ export async function createWorktree(
 		return { worktreePath, branchName };
 	} catch (err) {
 		// Real failure creating the worktree — surface it so callers can observe the problem.
+		// biome-ignore lint/suspicious/noConsole: intentional diagnostic output for worktree failures
 		console.error(
 			`[captain] Failed to create worktree "${worktreePath}" (branch: ${branchName}):`,
 			err instanceof Error ? err.message : String(err),
@@ -113,6 +114,7 @@ export async function commitWorktreeChanges(
 		return true;
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
+		// biome-ignore lint/suspicious/noConsole: intentional diagnostic output for worktree failures
 		console.warn(`[captain] commit failed for "${worktreePath}": ${msg}`);
 		return false;
 	}
@@ -129,6 +131,7 @@ async function deleteBranch(
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
 		if (!(msg.includes("not found") || msg.includes("error: branch"))) {
+			// biome-ignore lint/suspicious/noConsole: intentional diagnostic output for worktree failures
 			console.warn(
 				`[captain] branch delete failed for "${branchName}": ${msg}`,
 			);
@@ -158,6 +161,7 @@ export async function removeWorktree(
 		if (
 			!(msg.includes("is not a working tree") || msg.includes("No such file"))
 		) {
+			// biome-ignore lint/suspicious/noConsole: intentional diagnostic output for worktree failures
 			console.warn(
 				`[captain] worktree remove failed for "${worktreePath}": ${msg}`,
 			);
@@ -186,6 +190,7 @@ export async function removeWorktreesSequential(
 	} catch (err) {
 		// Prune failure is not critical, just log it
 		const msg = err instanceof Error ? err.message : String(err);
+		// biome-ignore lint/suspicious/noConsole: intentional diagnostic output for worktree failures
 		console.warn(`[captain] git worktree prune failed: ${msg}`);
 	}
 }
