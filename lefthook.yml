@@ -7,6 +7,13 @@ pre-commit:
       stage_fixed: true
     typecheck:
       run: bun run typecheck
+    colocated-tests:
+      glob: "*.test.ts"
+      run: |
+        for f in {staged_files}; do
+          src="${f%.test.ts}.ts"
+          [ -f "$src" ] || (echo "Orphaned test (no matching source): $f" && exit 1)
+        done
     line-limit:
       run: |
         violations=$(find extensions skills -name "*.ts" ! -name "*.test.ts" | xargs wc -l 2>/dev/null | awk '$1 > 200 && $2 != "total"' | grep -v "node_modules" || true)

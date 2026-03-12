@@ -49,10 +49,24 @@ jobs:
           fi
           echo "✅ All source files within 200-line limit"
 
+  colocated-tests:
+    name: Co-located Tests Gate
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enforce co-located tests
+        run: |
+          find extensions skills -name "*.test.ts" | while read f; do
+            src="${f%.test.ts}.ts"
+            [ -f "$src" ] || (echo "❌ Orphaned test (no matching source): $f" && exit 1)
+          done
+          echo "✅ All test files are co-located with their source"
+
   test:
     name: Tests
     runs-on: ubuntu-latest
-    needs: line-limit
+    needs: [line-limit, colocated-tests]
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -60,8 +74,16 @@ jobs:
           bun-version: latest
       - name: Install dependencies
         run: bun install
-      - name: Run tests
-        run: bun test extensions/
+      - name: Run tests with coverage threshold
+        run: |
+          OUTPUT=$(bun test --coverage extensions/ 2>&1)
+          echo "$OUTPUT"
+          LINES=$(echo "$OUTPUT" | grep "All files" | awk -F'|' '{gsub(/ /,"",$2); print $2}' | tr -d '%')
+          if [ -n "$LINES" ] && [ "${LINES%%.*}" -lt 80 ]; then
+            echo "❌ Line coverage ${LINES}% is below the 80% threshold (Basic_knowledge.md §TDD)"
+            exit 1
+          fi
+          echo "✅ Coverage ${LINES}% meets the 80% threshold"
 
   coverage:
     name: Coverage Badges
@@ -82,6 +104,7 @@ jobs:
       - name: Parse coverage and update README badges
         run: |
           COVERAGE=$(bun test --coverage extensions/ 2>&1)
+          echo "$COVERAGE"
           LINES=$(echo "$COVERAGE"   | grep "All files" | awk -F'|' '{gsub(/ /,"",$2); print $2}')
           BRANCHES=$(echo "$COVERAGE" | grep "All files" | awk -F'|' '{gsub(/ /,"",$3); print $3}')
 
