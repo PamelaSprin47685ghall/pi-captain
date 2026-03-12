@@ -2,7 +2,7 @@
 // Extracted from commands.ts (Basic_knowledge.md ≤200 lines rule).
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { CaptainState } from "../state.js";
-import type { PipelineState, Runnable } from "../types.js";
+import type { PipelineState } from "../types.js";
 import {
 	runInteractivePipelineLauncher,
 	runRunnableFromCommand,
@@ -88,7 +88,7 @@ export function registerCommandsA(pi: ExtensionAPI, state: CaptainState): void {
 	// /captain-load — load a preset pipeline
 	pi.registerCommand("captain-load", {
 		description:
-			"Load a pipeline preset (/captain-load <name>). No args to list available presets.",
+			"Load a pipeline preset or file (/captain-load <name|path>). No args to list available presets.",
 		getArgumentCompletions: (prefix) => {
 			const presets = state.discoverPresets(process.cwd());
 			return presets
@@ -101,7 +101,7 @@ export function registerCommandsA(pi: ExtensionAPI, state: CaptainState): void {
 				const presets = state.discoverPresets(ctx.cwd);
 				if (presets.length === 0) {
 					ctx.ui.notify(
-						"No pipeline presets found. Place .json files in .pi/pipelines/",
+						"No pipeline presets found. Place .ts/.json files in .pi/pipelines/ or provide a file path.",
 						"info",
 					);
 					return;
@@ -113,24 +113,16 @@ export function registerCommandsA(pi: ExtensionAPI, state: CaptainState): void {
 				return;
 			}
 			try {
-				let result: { name: string; spec: Runnable };
-				if (state.builtinPresetMap[name]) {
-					result = state.loadBuiltinPreset(name);
-				} else {
-					const { existsSync } = await import("node:fs");
-					const { join } = await import("node:path");
-					const projectFile = join(ctx.cwd, ".pi", "pipelines", `${name}.json`);
-					if (!existsSync(projectFile)) {
-						ctx.ui.notify(
-							`Preset "${name}" not found. Run /captain-load to see available presets.`,
-							"error",
-						);
-						return;
-					}
-					result = state.loadPipelineFile(projectFile);
+				const result = await state.resolvePreset(name, ctx.cwd);
+				if (!result) {
+					ctx.ui.notify(
+						`Preset or file "${name}" not found. Run /captain-load to see available presets, or provide a valid file path.`,
+						"error",
+					);
+					return;
 				}
 				ctx.ui.notify(
-					`✓ Loaded "${result.name}"\nRun with: /captain-run ${result.name} <input>`,
+					`✓ Loaded "${result.name}"${result.source ? ` from ${result.source}` : ""}\nRun with: /captain-run ${result.name} <input>`,
 					"info",
 				);
 			} catch (err) {
