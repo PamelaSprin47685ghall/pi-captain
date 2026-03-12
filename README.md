@@ -1,5 +1,7 @@
 # pi-captain
 
+> ⚠️ **This is not production ready — just an experimentation.**
+
 Pipeline orchestrator for [pi](https://github.com/badlogic/pi-mono). Wire steps into sequential/parallel/pool pipelines with quality gates and run complex workflows — each step declares its own model, tools, and temperature inline.
 
 ## Install
