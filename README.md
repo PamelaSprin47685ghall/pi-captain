@@ -1,7 +1,7 @@
 # pi-captain
 
-![Lines](https://img.shields.io/badge/lines-86.04-brightgreen)
-![Branches](https://img.shields.io/badge/branches-86.04-brightgreen)
+![Lines](https://img.shields.io/badge/lines-85.40-brightgreen)
+![Branches](https://img.shields.io/badge/branches-85.33-brightgreen)
 
 
 > ⚠️ **This is not production ready — just an experimentation.**
