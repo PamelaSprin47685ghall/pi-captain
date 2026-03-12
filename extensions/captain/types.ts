@@ -105,7 +105,7 @@ export type Transform = (params: {
  */
 export type MergeFn = (
 	outputs: readonly string[],
-	ctx: import("./merge.js").MergeCtx,
+	ctx: import("./core/merge.js").MergeCtx,
 ) => string | Promise<string>;
 
 // ── Composition Types (infinitely nestable) ────────────────────────────────
@@ -169,6 +169,36 @@ export interface Parallel {
 export type Runnable = Step | Sequential | Pool | Parallel;
 
 // ── Runtime State ──────────────────────────────────────────────────────────
-// Mutable execution state lives in runtime-state.ts (kept separate to stay
-// within the 200-line limit per file).
-export type { PipelineState, StepResult, StepStatus } from "./runtime-state.js";
+
+export type StepStatus =
+	| "pending"
+	| "running"
+	| "passed"
+	| "failed"
+	| "skipped";
+
+export interface StepResult {
+	readonly label: string;
+	status: StepStatus;
+	output: string;
+	gateResult?: { readonly passed: boolean; readonly reason: string };
+	error?: string;
+	elapsed: number;
+	group?: string;
+	readonly toolCount?: number;
+	toolCallCount?: number;
+	model?: string;
+}
+
+export interface PipelineState {
+	readonly name: string;
+	readonly spec: Runnable;
+	status: "idle" | "running" | "completed" | "failed";
+	results: StepResult[];
+	readonly currentSteps: Set<string>;
+	readonly currentStepStreams: Map<string, string>;
+	readonly currentStepToolCalls: Map<string, number>;
+	startTime?: number;
+	endTime?: number;
+	finalOutput?: string;
+}

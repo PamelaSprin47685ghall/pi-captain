@@ -6,9 +6,9 @@ import {
 	file,
 	llmFast,
 	regexCI,
+	runGate,
 	user,
 } from "./gates/index.js";
-import { runGate } from "./gates.js";
 import type { GateCtx } from "./types.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────

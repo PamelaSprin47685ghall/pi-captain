@@ -4,9 +4,9 @@ import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
 } from "@mariozechner/pi-coding-agent";
+import type { ExecutorContext } from "../core/executor.js";
+import { executeRunnable } from "../core/executor.js";
 import { describeRunnable } from "../core/utils/index.js";
-import type { ExecutorContext } from "../executor.js";
-import { executeRunnable } from "../executor.js";
 import type { CaptainState } from "../state.js";
 import type { PipelineState, Runnable } from "../types.js";
 import { ensurePipelineLoaded } from "./commands-parse.js";

@@ -7,6 +7,15 @@
 // This avoids the need to import from individual files and provides better
 // IDE autocomplete and IntelliSense support.
 
+// ── Merge Presets ──────────────────────────────────────────────────────────
+export {
+	awaitAll,
+	concat,
+	firstPass,
+	mergeFromStrategy,
+	rank,
+	vote,
+} from "./core/merge.js";
 // ── LLM Gates ──────────────────────────────────────────────────────────────
 export { llmFast } from "./gates/llm.js";
 // ── OnFail Presets ─────────────────────────────────────────────────────────
@@ -26,15 +35,6 @@ export {
 	regexCI,
 	user,
 } from "./gates/presets.js";
-// ── Merge Presets ──────────────────────────────────────────────────────────
-export {
-	awaitAll,
-	concat,
-	firstPass,
-	mergeFromStrategy,
-	rank,
-	vote,
-} from "./merge.js";
 // ── Transform Presets ──────────────────────────────────────────────────────
 export {
 	extract,

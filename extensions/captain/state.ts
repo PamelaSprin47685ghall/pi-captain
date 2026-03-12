@@ -8,10 +8,9 @@ import {
 	pipelineNamesFromFiles,
 } from "./core/contract.js";
 import { deserializeRunnable } from "./core/deserialize.js";
+import type { FsPort } from "./core/ports.js";
 import { describeRunnable } from "./core/utils/index.js";
 import { realFs } from "./infra/fs.js";
-import * as builtinPipelines from "./pipelines/index.js";
-import type { FsPort } from "./ports.js";
 import { loadTsPipelineFile } from "./shell/ts-loader.js";
 import type { PipelineState, Runnable } from "./types.js";
 
@@ -19,7 +18,6 @@ export class CaptainState {
 	pipelines: Record<string, { spec: Runnable }> = {};
 	runningState: PipelineState | null = null;
 
-	readonly builtinPresetMap: Record<string, { pipeline: Runnable }>;
 	readonly captainDir: string;
 
 	/** Injected filesystem adapter — swap out in tests with a fake. */
@@ -28,12 +26,6 @@ export class CaptainState {
 	constructor(captainDir: string, fs: FsPort = realFs) {
 		this.captainDir = captainDir.replace(/\/+$/, "");
 		this.fs = fs;
-		this.builtinPresetMap = {};
-		for (const [key, mod] of Object.entries(builtinPipelines)) {
-			const kebab = key.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
-			const name = `captain:${kebab}`;
-			this.builtinPresetMap[name] = { pipeline: mod.pipeline };
-		}
 	}
 
 	// ── Contract File ─────────────────────────────────────────────────────
@@ -58,21 +50,13 @@ export class CaptainState {
 
 	// ── Preset Discovery & Loading ────────────────────────────────────────
 
-	discoverPresets(
-		cwd?: string,
-	): { name: string; source: "builtin" | string }[] {
-		// Pure: map builtins
-		const builtins = Object.keys(this.builtinPresetMap).map((name) => ({
-			name,
-			source: "builtin" as const,
-		}));
-
+	discoverPresets(cwd?: string): { name: string; source: string }[] {
 		// Impure: read directory
 		const piPipelinesDir = join(cwd ?? process.cwd(), ".pi", "pipelines");
-		if (!this.fs.exists(piPipelinesDir)) return builtins;
+		if (!this.fs.exists(piPipelinesDir)) return [];
 
 		const userFiles = this.fs.listFiles(piPipelinesDir);
-		const userPresets = userFiles
+		return userFiles
 			.filter(
 				(f) => f !== "captain.ts" && (f.endsWith(".ts") || f.endsWith(".json")),
 			)
@@ -80,15 +64,6 @@ export class CaptainState {
 				name: basename(f, f.endsWith(".ts") ? ".ts" : ".json"),
 				source: join(piPipelinesDir, f),
 			}));
-
-		return [...builtins, ...userPresets];
-	}
-
-	loadBuiltinPreset(name: string): { name: string; spec: Runnable } {
-		const preset = this.builtinPresetMap[name];
-		if (!preset) throw new Error(`Builtin preset "${name}" not found`);
-		this.pipelines[name] = { spec: preset.pipeline };
-		return { name, spec: preset.pipeline };
 	}
 
 	loadPipelineFile(filePath: string): { name: string; spec: Runnable } {
@@ -126,8 +101,6 @@ export class CaptainState {
 		| Promise<{ name: string; spec: Runnable; source?: string }>
 		| { name: string; spec: Runnable; source?: string }
 		| undefined {
-		if (this.builtinPresetMap[name]) return this.loadBuiltinPreset(name);
-
 		// Resolve by explicit file path
 		const candidate = resolve(cwd, name);
 		let filePath = this.fs.exists(candidate)
@@ -163,20 +136,6 @@ export class CaptainState {
 			([name, p]) => `• ${name} (loaded)\n${describeRunnable(p.spec, 2)}`,
 		);
 
-		// Pure: unloaded builtins
-		const unloadedBuiltins = Object.keys(this.builtinPresetMap)
-			.filter((n) => !this.pipelines[n])
-			.map((n) => `  • ${n} (builtin)`);
-
-		const builtinSection =
-			unloadedBuiltins.length > 0
-				? [
-						"",
-						"Available builtin presets (captain_load to activate):",
-						...unloadedBuiltins,
-					]
-				: [];
-
 		// Impure: user pipeline discovery
 		const userSection: string[] = [];
 		if (cwd) {
@@ -195,6 +154,6 @@ export class CaptainState {
 				}
 			}
 		}
-		return [...loaded, ...builtinSection, ...userSection];
+		return [...loaded, ...userSection];
 	}
 }

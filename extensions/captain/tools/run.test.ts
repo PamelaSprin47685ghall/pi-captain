@@ -89,34 +89,16 @@ const SIMPLE_PIPELINE: Runnable = {
 };
 
 function makeMinimalState(
-	options: {
-		loadedPipelines?: Record<string, { spec: Runnable }>;
-		builtinPresets?: Record<string, { pipeline: Runnable }>;
-	} = {},
+	options: { loadedPipelines?: Record<string, { spec: Runnable }> } = {},
 ): CaptainState {
 	const pipelines = options.loadedPipelines ?? {};
-	const builtinPresetMap = options.builtinPresets ?? {};
 
 	return {
 		pipelines,
-		builtinPresetMap,
-
 		runningState: null,
-
 		snapshot: () => ({ pipelines, lastRun: undefined }),
-		resolvePreset: (name: string) => {
-			if (builtinPresetMap[name]) {
-				// Simulate auto-load
-				pipelines[name] = { spec: builtinPresetMap[name].pipeline };
-				return { name, spec: builtinPresetMap[name].pipeline };
-			}
-			return undefined;
-		},
-		discoverPresets: () =>
-			Object.keys(builtinPresetMap).map((n) => ({
-				name: n,
-				source: "builtin" as const,
-			})),
+		resolvePreset: (_name: string) => undefined,
+		discoverPresets: () => [],
 	} as unknown as CaptainState;
 }
 
@@ -277,7 +259,7 @@ describe('captain_run tool: name="" + hasUI=false', () => {
 
 describe('captain_run tool: name="" + hasUI=true + no pipelines available', () => {
 	test("does NOT call ctx.ui.select when no options exist", async () => {
-		const state = makeMinimalState({ loadedPipelines: {}, builtinPresets: {} });
+		const state = makeMinimalState({ loadedPipelines: {} });
 		const { pi, getTool } = makePI();
 		registerRunTool(
 			pi as never,
@@ -297,7 +279,7 @@ describe('captain_run tool: name="" + hasUI=true + no pipelines available', () =
 	});
 
 	test("returns a non-error result with 'No pipelines available' message", async () => {
-		const state = makeMinimalState({ loadedPipelines: {}, builtinPresets: {} });
+		const state = makeMinimalState({ loadedPipelines: {} });
 		const { pi, getTool } = makePI();
 		registerRunTool(
 			pi as never,
@@ -593,14 +575,12 @@ describe("captain_run tool: name already provided → no UI shown", () => {
 	});
 });
 
-// ── Tests: auto-load of builtin preset ────────────────────────────────────
+// ── Tests: auto-load of user preset on selection ──────────────────────────
 
 describe("captain_run tool: auto-load builtin preset on selection", () => {
-	test("pipeline is loaded into state.pipelines after user selects a builtin preset", async () => {
-		const builtinSpec = SIMPLE_PIPELINE;
+	test("pipeline is loaded into state.pipelines after user selects a loaded preset", async () => {
 		const state = makeMinimalState({
-			loadedPipelines: {},
-			builtinPresets: { "captain:spec-tdd": { pipeline: builtinSpec } },
+			loadedPipelines: { "my-pipe": { spec: SIMPLE_PIPELINE } },
 		});
 		const { pi, getTool } = makePI();
 		registerRunTool(
@@ -616,20 +596,18 @@ describe("captain_run tool: auto-load builtin preset on selection", () => {
 
 		const { ctx } = makeCtx({
 			hasUI: true,
-			selectReturn: "captain:spec-tdd (builtin)",
+			selectReturn: "my-pipe (loaded)",
 			inputReturn: "my input",
 		});
 
 		await getTool().execute("id", { name: "" }, undefined, undefined, ctx);
 
-		// The preset should have been auto-loaded into state.pipelines
-		expect(state.pipelines["captain:spec-tdd"]).toBeDefined();
+		expect(state.pipelines["my-pipe"]).toBeDefined();
 	});
 
-	test("shows options including builtin preset labeled (builtin)", async () => {
+	test("shows options including loaded pipeline labeled (loaded)", async () => {
 		const state = makeMinimalState({
-			loadedPipelines: {},
-			builtinPresets: { "captain:spec-tdd": { pipeline: SIMPLE_PIPELINE } },
+			loadedPipelines: { "captain:spec-tdd": { spec: SIMPLE_PIPELINE } },
 		});
 		const { pi, getTool } = makePI();
 		registerRunTool(
@@ -645,12 +623,12 @@ describe("captain_run tool: auto-load builtin preset on selection", () => {
 
 		const { ctx, selectMock } = makeCtx({
 			hasUI: true,
-			selectReturn: undefined, // cancel so we can inspect call args
+			selectReturn: undefined,
 		});
 		await getTool().execute("id", { name: "" }, undefined, undefined, ctx);
 
 		const options = selectMock.mock.calls[0][1] as string[];
-		expect(options).toContain("captain:spec-tdd (builtin)");
+		expect(options).toContain("captain:spec-tdd (loaded)");
 	});
 });
 
@@ -720,20 +698,13 @@ describe("captain_run tool: error handling when UI methods throw", () => {
 		expect(result.content[0].text).toContain("input broke");
 	});
 
-	test("does NOT proceed to execution when resolvePreset throws (auto-load failure)", async () => {
+	test("does NOT proceed to execution when resolvePreset throws (load failure)", async () => {
 		const state = makeMinimalState({
-			loadedPipelines: {},
-			builtinPresets: {},
+			loadedPipelines: { "captain:broken": { spec: SIMPLE_PIPELINE } },
 		});
 		// Inject a broken resolvePreset that throws
 		(state as unknown as { resolvePreset: unknown }).resolvePreset = () => {
 			throw new Error("corrupted JSON");
-		};
-		// Fake a preset in builtinPresetMap so options include it
-		(
-			state as unknown as { builtinPresetMap: Record<string, unknown> }
-		).builtinPresetMap = {
-			"captain:broken": { pipeline: SIMPLE_PIPELINE },
 		};
 
 		const { pi, getTool } = makePI();
@@ -750,7 +721,7 @@ describe("captain_run tool: error handling when UI methods throw", () => {
 
 		const { ctx } = makeCtx({
 			hasUI: true,
-			selectReturn: "captain:broken (builtin)",
+			selectReturn: "captain:broken (loaded)",
 			inputReturn: "some input",
 		});
 		const _result = (await getTool().execute(
@@ -761,9 +732,8 @@ describe("captain_run tool: error handling when UI methods throw", () => {
 			ctx,
 		)) as { content: Array<{ text: string }> };
 
-		// Should surface the error and NOT silently proceed
-		// Pipeline should NOT be registered
-		expect(state.pipelines["captain:broken"]).toBeUndefined();
+		// Should not silently proceed — pipeline is either errored or cancelled
+		expect(state.pipelines["captain:broken"]?.spec).toEqual(SIMPLE_PIPELINE); // unchanged, not re-loaded
 	});
 });
 
@@ -881,7 +851,6 @@ describe("captain_run tool: select options include loaded pipelines then builtin
 				"pipeline-a": { spec: SIMPLE_PIPELINE },
 				"pipeline-b": { spec: SIMPLE_PIPELINE },
 			},
-			builtinPresets: {},
 		});
 		const { pi, getTool } = makePI();
 		registerRunTool(
@@ -907,11 +876,8 @@ describe("captain_run tool: select options include loaded pipelines then builtin
 		expect(options.some((o) => o.includes("(builtin)"))).toBe(false);
 	});
 
-	test("zero loaded + one builtin → options show one entry as (builtin)", async () => {
-		const state = makeMinimalState({
-			loadedPipelines: {},
-			builtinPresets: { "captain:shredder": { pipeline: SIMPLE_PIPELINE } },
-		});
+	test("zero loaded + zero builtin → no options, shows 'no pipelines' message", async () => {
+		const state = makeMinimalState({ loadedPipelines: {} });
 		const { pi, getTool } = makePI();
 		registerRunTool(
 			pi as never,
@@ -924,14 +890,16 @@ describe("captain_run tool: select options include loaded pipelines then builtin
 			}),
 		);
 
-		const { ctx, selectMock } = makeCtx({
-			hasUI: true,
-			selectReturn: undefined,
-		});
-		await getTool().execute("id", { name: "" }, undefined, undefined, ctx);
+		const { ctx } = makeCtx({ hasUI: true });
+		const result = (await getTool().execute(
+			"id",
+			{ name: "" },
+			undefined,
+			undefined,
+			ctx,
+		)) as { content: Array<{ text: string }> };
 
-		const options = selectMock.mock.calls[0][1] as string[];
-		expect(options).toContain("captain:shredder (builtin)");
+		expect(result.content[0].text).toMatch(/no pipelines/i);
 	});
 });
 

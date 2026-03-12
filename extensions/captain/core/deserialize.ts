@@ -14,7 +14,6 @@ import {
 	warn,
 } from "../gates/on-fail.js";
 import { command, file, regexCI, user } from "../gates/presets.js";
-import { mergeFromStrategy } from "../merge.js";
 import { extract, full, summarize } from "../transforms/presets.js";
 import type {
 	Gate,
@@ -24,6 +23,7 @@ import type {
 	Step,
 	Transform,
 } from "../types.js";
+import { mergeFromStrategy } from "./merge.js";
 
 // ── Gate deserialization ──────────────────────────────────────────────────
 

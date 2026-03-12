@@ -10,7 +10,7 @@ import {
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
-import type { FsPort } from "../ports.js";
+import type { FsPort } from "../core/ports.js";
 
 /** The real filesystem adapter — used in production. */
 export const realFs: FsPort = {

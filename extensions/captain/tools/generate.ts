@@ -4,8 +4,8 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { describeRunnable } from "../core/utils/index.js";
-import { generatePipeline } from "../generator.js";
 import type { CaptainState } from "../state.js";
+import { generatePipeline } from "./generator.js";
 
 export function registerGenerateTool(pi: ExtensionAPI, state: CaptainState) {
 	pi.registerTool({

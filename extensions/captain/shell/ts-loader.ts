@@ -4,7 +4,7 @@
 
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import type { FsPort } from "../ports.js";
+import type { FsPort } from "../core/ports.js";
 import type { Runnable } from "../types.js";
 
 const ALIAS_BRACKETS = `"<captain>/`;

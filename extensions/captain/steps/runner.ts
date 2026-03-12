@@ -3,9 +3,9 @@
 // handling. Private helpers live in runner-impl.ts to stay ≤ 200 lines.
 
 import type { Api, Model } from "@mariozechner/pi-ai";
+import { resolveModel } from "../core/utils/model.js";
 import { runGate } from "../gates/index.js";
 import type { GateCtx, Step, StepResult, Transform } from "../types.js";
-import { resolveModel } from "../utils/model.js";
 import { _captainDebug, handleFailure, runPrompt } from "./runner-impl.js";
 import {
 	type AgentSession,

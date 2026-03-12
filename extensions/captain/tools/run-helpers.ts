@@ -7,8 +7,8 @@ import type {
 	ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 import * as piSdk from "@mariozechner/pi-coding-agent";
-import type { ExecutorContext } from "../executor.js";
-import { executeRunnable } from "../executor.js";
+import type { ExecutorContext } from "../core/executor.js";
+import { executeRunnable } from "../core/executor.js";
 import type { CaptainState } from "../state.js";
 import type { PipelineState, StepResult } from "../types.js";
 import { text } from "./helpers.js";

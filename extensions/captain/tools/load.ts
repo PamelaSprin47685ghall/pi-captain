@@ -13,7 +13,7 @@ function listPresets(state: CaptainState, cwd: string) {
 		return {
 			content: [
 				text(
-					"No presets found. Add .ts modules to pipelines/ or .json files to .pi/pipelines/",
+					"No presets found. Copy a sample from examples/pipelines/ or add .ts/.json files to .pi/pipelines/",
 				),
 			],
 			details: undefined,
@@ -85,6 +85,7 @@ export function registerLoadTool(pi: ExtensionAPI, state: CaptainState) {
 			"  - A preset name (e.g. 'research-and-summarize') from builtin samples or .pi/pipelines/",
 			"  - An absolute or relative file path to a pipeline .ts file",
 			"",
+			"Sample pipelines live in examples/pipelines/ — copy one to .pi/pipelines/ to use it.",
 			"Pipeline TS format: export const pipeline: Runnable = { kind, ... }",
 			"Use action 'list' to see all available presets.",
 		].join("\n"),

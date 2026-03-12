@@ -1,12 +1,12 @@
 // ── Pool Pipeline Execution ───────────────────────────────────────────────
 // Run the same step N times in parallel branches (git worktrees)
 
+import type { MergeCtx } from "../core/merge.js";
 import {
 	createWorktree,
 	isGitRepo,
 	removeWorktree,
 } from "../infra/worktree.js";
-import type { MergeCtx } from "../merge.js";
 import { applyTransform, runContainerGate } from "../shell/execution.js";
 import type { ExecutorContext } from "../steps/runner.js";
 import type { Pool, Runnable, StepResult } from "../types.js";
