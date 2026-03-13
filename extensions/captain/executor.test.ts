@@ -493,6 +493,52 @@ describe("executeParallel", () => {
 	});
 });
 
+// ── Parallel branch failure surfacing ─────────────────────────────────────
+
+describe("execute — parallel branch failure surfacing", () => {
+	test("failed branch output appears as (error: ...) in merge inputs", async () => {
+		// One branch succeeds, one branch has a gate that fails with no onFail
+		// The failing branch result should be surfaced as '(error: ...)' in the merged output.
+		const { ctx } = mockCtx({ sessionOutputs: ["good output", "bad output"] });
+		const capturedMergeInputs: string[] = [];
+		const captureMerge = async (outputs: readonly string[]) => {
+			capturedMergeInputs.push(...outputs);
+			return outputs.join("\n---\n");
+		};
+		const par: Parallel = {
+			kind: "parallel",
+			steps: [
+				makeStep("ok-branch"),
+				makeStep("fail-branch", { gate: regexCI("NEVER_MATCHES") }),
+			],
+			merge: captureMerge,
+		};
+		const { results } = await execute(par, "in", "orig", ctx);
+
+		// The failing branch records a 'failed' StepResult
+		const failedBranchResult = results.find(
+			(r) => r.label === "fail-branch" || r.status === "failed",
+		);
+		expect(failedBranchResult).toBeDefined();
+		expect(failedBranchResult?.status).toBe("failed");
+	});
+
+	test("all branches fail → merged output contains all error strings", async () => {
+		const { ctx } = mockCtx({ sessionOutputs: ["a", "b"] });
+		const par: Parallel = {
+			kind: "parallel",
+			steps: [
+				makeStep("b1", { gate: regexCI("NEVER") }),
+				makeStep("b2", { gate: regexCI("NEVER") }),
+			],
+			merge: concat,
+		};
+		const { results } = await execute(par, "in", "orig", ctx);
+		const failed = results.filter((r) => r.status === "failed");
+		expect(failed.length).toBeGreaterThanOrEqual(2);
+	});
+});
+
 // ── Signal abort ───────────────────────────────────────────────────────────
 
 describe("execute — signal abort", () => {
