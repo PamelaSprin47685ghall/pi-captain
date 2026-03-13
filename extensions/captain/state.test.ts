@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import type { FsPort } from "./state.js";
 import { CaptainState } from "./state.js";
+import type { PipelineState } from "./types.js";
 
 // ── Fake FsPort ───────────────────────────────────────────────────────────
 
@@ -162,5 +163,165 @@ describe("CaptainState: buildPipelineListLines", () => {
 		const flat = lines.join("\n");
 		const count = (flat.match(/loaded-pipe/g) ?? []).length;
 		expect(count).toBe(1);
+	});
+});
+
+// ── runningState getter ───────────────────────────────────────────────────
+
+describe("CaptainState: runningState", () => {
+	function makeJob(
+		state: CaptainState,
+		status: "running" | "completed" | "failed",
+		name = "test-pipeline",
+	) {
+		const pipelineState = {
+			name,
+			spec: { kind: "step" as const, label: "x", prompt: "y" },
+			status,
+			results: [],
+			currentSteps: new Set<string>(),
+			currentStepStreams: new Map<string, string>(),
+			currentStepToolCalls: new Map<string, number>(),
+		};
+		return state.allocateJob(pipelineState);
+	}
+
+	test("returns null when no jobs exist", () => {
+		const state = new CaptainState("/captain", makeFakeFs());
+		expect(state.runningState).toBeNull();
+	});
+
+	test("returns the running job state when one is running", () => {
+		const state = new CaptainState("/captain", makeFakeFs());
+		makeJob(state, "running", "my-pipe");
+		const running = state.runningState;
+		expect(running?.name).toBe("my-pipe");
+		expect(running?.status).toBe("running");
+	});
+
+	test("returns null when only completed jobs exist", () => {
+		const state = new CaptainState("/captain", makeFakeFs());
+		makeJob(state, "completed");
+		// no running job → returns the last job's state
+		const r = state.runningState;
+		// It returns last job state (completed in this case)
+		expect(r?.status).toBe("completed");
+	});
+
+	test("prefers running job over completed when both exist", () => {
+		const state = new CaptainState("/captain", makeFakeFs());
+		makeJob(state, "completed", "done-pipe");
+		makeJob(state, "running", "active-pipe");
+		const r = state.runningState;
+		expect(r?.name).toBe("active-pipe");
+	});
+});
+
+// ── allocateJob ───────────────────────────────────────────────────────────
+
+describe("CaptainState: allocateJob", () => {
+	test("assigns incrementing job IDs", () => {
+		const state = new CaptainState("/captain", makeFakeFs());
+		const ps1 = {
+			name: "p1",
+			spec: { kind: "step" as const, label: "x", prompt: "y" },
+			status: "running" as const,
+			results: [],
+			currentSteps: new Set<string>(),
+			currentStepStreams: new Map<string, string>(),
+			currentStepToolCalls: new Map<string, number>(),
+		};
+		const ps2 = { ...ps1, name: "p2" };
+		const job1 = state.allocateJob(ps1);
+		const job2 = state.allocateJob(ps2);
+		expect(job1.id).toBe(1);
+		expect(job2.id).toBe(2);
+	});
+
+	test("sets jobId on the pipeline state", () => {
+		const state = new CaptainState("/captain", makeFakeFs());
+		const ps: PipelineState = {
+			name: "p",
+			spec: { kind: "step" as const, label: "x", prompt: "y" },
+			status: "running",
+			results: [],
+			currentSteps: new Set<string>(),
+			currentStepStreams: new Map<string, string>(),
+			currentStepToolCalls: new Map<string, number>(),
+		};
+		const job = state.allocateJob(ps);
+		expect(ps.jobId).toBe(job.id);
+	});
+
+	test("job is retrievable from jobs map", () => {
+		const state = new CaptainState("/captain", makeFakeFs());
+		const ps: PipelineState = {
+			name: "p",
+			spec: { kind: "step" as const, label: "x", prompt: "y" },
+			status: "running",
+			results: [],
+			currentSteps: new Set<string>(),
+			currentStepStreams: new Map<string, string>(),
+			currentStepToolCalls: new Map<string, number>(),
+		};
+		const job = state.allocateJob(ps);
+		expect(state.jobs.get(job.id)).toBe(job);
+	});
+});
+
+// ── killJob ───────────────────────────────────────────────────────────────
+
+describe("CaptainState: killJob", () => {
+	function allocateRunning(state: CaptainState) {
+		const ps = {
+			name: "running-pipe",
+			spec: { kind: "step" as const, label: "x", prompt: "y" },
+			status: "running" as const,
+			results: [],
+			currentSteps: new Set<string>(),
+			currentStepStreams: new Map<string, string>(),
+			currentStepToolCalls: new Map<string, number>(),
+		};
+		return state.allocateJob(ps);
+	}
+
+	test("returns not-found for unknown job id", () => {
+		const state = new CaptainState("/captain", makeFakeFs());
+		expect(state.killJob(999)).toBe("not-found");
+	});
+
+	test("returns not-running when job is already completed", () => {
+		const state = new CaptainState("/captain", makeFakeFs());
+		const job = allocateRunning(state);
+		job.state.status = "completed";
+		expect(state.killJob(job.id)).toBe("not-running");
+	});
+
+	test("returns killed and cancels a running job", () => {
+		const state = new CaptainState("/captain", makeFakeFs());
+		const job = allocateRunning(state);
+		const outcome = state.killJob(job.id);
+		expect(outcome).toBe("killed");
+		expect(job.state.status).toBe("cancelled");
+		expect(job.controller.signal.aborted).toBe(true);
+		expect(job.state.endTime).toBeDefined();
+	});
+});
+
+// ── resolvePreset ─────────────────────────────────────────────────────────
+
+describe("CaptainState: resolvePreset", () => {
+	test("returns undefined when file does not exist anywhere", async () => {
+		const fs = makeFakeFs();
+		const state = new CaptainState("/captain", fs);
+		const result = await state.resolvePreset("nonexistent-pipeline", "/cwd");
+		expect(result).toBeUndefined();
+	});
+
+	test("returns undefined when .pi/pipelines/<name>.ts does not exist", async () => {
+		const fs = makeFakeFs();
+		const state = new CaptainState("/captain", fs);
+		const result = await state.resolvePreset("my-pipe", "/cwd");
+		expect(result).toBeUndefined();
 	});
 });

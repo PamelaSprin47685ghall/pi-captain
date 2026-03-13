@@ -580,3 +580,199 @@ describe("execute — unknown runnable kind", () => {
 		expect(output).toMatch(/Unknown runnable kind/);
 	});
 });
+
+// ── evalGate catch path ────────────────────────────────────────────────────
+
+describe("execute — gate that throws an exception", () => {
+	test("gate throwing an Error is caught and treated as failed", async () => {
+		const { ctx, ends } = mockCtx({ singleOutput: "output" });
+		const throwingGate = async (): Promise<true | string> => {
+			throw new Error("gate exploded");
+		};
+		const step = makeStep("throw-gate", { gate: throwingGate as never });
+		const { output } = await execute(step, "in", "orig", ctx);
+		// The gate threw so it failed; no onFail → status failed
+		expect(output).toBe("output");
+		expect(ends[0].status).toBe("failed");
+		expect(ends[0].error).toContain("gate exploded");
+	});
+
+	test("gate throwing a non-Error is caught and treated as failed", async () => {
+		const { ctx, ends } = mockCtx({ singleOutput: "output" });
+		const throwingGate = async (): Promise<true | string> => {
+			// biome-ignore lint/suspicious/noExplicitAny: intentional non-Error throw for coverage
+			throw "string error" as any;
+		};
+		const step = makeStep("throw-str", { gate: throwingGate as never });
+		await execute(step, "in", "orig", ctx);
+		expect(ends[0].status).toBe("failed");
+		expect(ends[0].error).toContain("string error");
+	});
+});
+
+// ── executeStep catch path (sessionFactory throws) ────────────────────────
+
+describe("execute — sessionFactory runPrompt throws", () => {
+	test("records failed result with error message when runPrompt throws", async () => {
+		const throwingSf: SessionFactory = {
+			createSession: () => Promise.resolve({}),
+			runPrompt: () => {
+				throw new Error("session blew up");
+			},
+		};
+		const { ctx, ends } = mockCtx({
+			overrides: { sessionFactory: throwingSf },
+		});
+		const { output, results } = await execute(
+			makeStep("crashing"),
+			"in",
+			"orig",
+			ctx,
+		);
+		expect(output).toContain("Error");
+		expect(results[0].status).toBe("failed");
+		expect(ends[0].error).toContain("session blew up");
+	});
+});
+
+// ── MAX_RETRIES exceeded in step ───────────────────────────────────────────
+
+describe("execute — MAX_RETRIES (10) exceeded in step retry", () => {
+	test("caps retries at 10 even when onFail always returns retry", async () => {
+		// Produce 12 "bad" outputs — the gate never matches, and retry(11) always
+		// says retry. After 10 retries, the executor's MAX_RETRIES guard kicks in.
+		const outputs = new Array(12).fill("no match");
+		const { ctx, ends } = mockCtx({ sessionOutputs: outputs });
+		const step = makeStep("max-retry", {
+			gate: regexCI("NEVER_MATCHES"),
+			onFail: retry(11), // preset allows up to 11, but MAX_RETRIES=10 stops it
+		});
+		await execute(step, "in", "orig", ctx);
+		expect(ends[0].status).toBe("failed");
+		expect(ends[0].error).toContain("Gate failed after");
+	});
+});
+
+// ── default: branch in step switch (unknown onFail action) ────────────────
+
+describe("execute — step onFail returns unknown action", () => {
+	test("falls through to default which marks step as failed", async () => {
+		const { ctx, ends } = mockCtx({ singleOutput: "output" });
+		// Return an action that isn't any recognized case
+		const weirdOnFail = () => ({ action: "teleport" as "fail" });
+		const step = makeStep("weird", {
+			gate: regexCI("NEVER"),
+			onFail: weirdOnFail,
+		});
+		await execute(step, "in", "orig", ctx);
+		expect(ends[0].status).toBe("failed");
+	});
+});
+
+// ── Parallel rejected branch ───────────────────────────────────────────────
+
+describe("execute — parallel branch Promise.allSettled rejection", () => {
+	test("rejected branch is captured as error output in merge", async () => {
+		// executeStep's try/catch prevents runPrompt throws from reaching allSettled.
+		// A transform that throws WILL propagate (it's outside the try/catch).
+		const capturedOutputs: string[] = [];
+		const { ctx } = mockCtx({ sessionOutputs: ["good output", "ok output"] });
+		const par: Parallel = {
+			kind: "parallel",
+			steps: [
+				makeStep("good-branch"),
+				makeStep("bad-branch", {
+					// transform runs after the try/catch in executeStep → can reject
+					transform: () => {
+						throw new Error("transform exploded");
+					},
+				}),
+			],
+			merge: (outputs) => {
+				capturedOutputs.push(...outputs);
+				return outputs.join("\n---\n");
+			},
+		};
+		const { results } = await execute(par, "in", "orig", ctx);
+		// The rejected branch should appear as a failed StepResult added by allSettled handler
+		const failed = results.find(
+			(r) => r.status === "failed" && r.label.startsWith("branch"),
+		);
+		expect(failed).toBeDefined();
+		expect(failed?.error).toContain("transform exploded");
+		// The merge should receive the error representation
+		expect(capturedOutputs.some((o) => o.includes("error"))).toBe(true);
+	});
+});
+
+// ── Sequential container gate with retry ──────────────────────────────────
+
+describe("execute — sequential container gate retry", () => {
+	test("retries the whole sequential when container gate fails with retry(1)", async () => {
+		// First run: output = "bad" → gate fails → retry
+		// Second run: output = "GOOD" → gate passes
+		let runCount = 0;
+		const sf: SessionFactory = {
+			createSession: () => Promise.resolve({}),
+			runPrompt: () => {
+				runCount++;
+				return Promise.resolve({
+					output: runCount === 1 ? "bad" : "GOOD match",
+					toolCallCount: 0,
+				});
+			},
+		};
+		const { ctx } = mockCtx({ overrides: { sessionFactory: sf } });
+		const seq: Sequential = {
+			kind: "sequential",
+			steps: [makeStep("s1")],
+			gate: regexCI("GOOD"),
+			onFail: retry(1),
+		};
+		const { output } = await execute(seq, "in", "orig", ctx);
+		expect(output).toContain("GOOD");
+		expect(runCount).toBe(2);
+	});
+
+	test("sequential container gate with fail action returns output", async () => {
+		const { ctx } = mockCtx({ singleOutput: "no keyword" });
+		const seq: Sequential = {
+			kind: "sequential",
+			steps: [makeStep("s")],
+			gate: regexCI("REQUIRED"),
+			onFail: (_) => ({ action: "fail" as const }),
+		};
+		const { results } = await execute(seq, "in", "orig", ctx);
+		const gateResult = results.find((r) => r.label.startsWith("[gate]"));
+		expect(gateResult).toBeDefined();
+		expect(gateResult?.error).toContain("Gate failed");
+	});
+
+	test("sequential container gate with fallback runs the fallback step", async () => {
+		const { ctx } = mockCtx({
+			sessionOutputs: ["no keyword", "fallback output"],
+		});
+		const fallbackStep = makeStep("fallback-container");
+		const seq: Sequential = {
+			kind: "sequential",
+			steps: [makeStep("primary-container")],
+			gate: regexCI("REQUIRED"),
+			onFail: fallback(fallbackStep),
+		};
+		const { output } = await execute(seq, "in", "orig", ctx);
+		expect(output).toContain("fallback output");
+	});
+
+	test("sequential container gate default case (unknown action)", async () => {
+		const { ctx } = mockCtx({ singleOutput: "no keyword" });
+		const seq: Sequential = {
+			kind: "sequential",
+			steps: [makeStep("s")],
+			gate: regexCI("REQUIRED"),
+			onFail: () => ({ action: "teleport" as "fail" }),
+		};
+		const { output } = await execute(seq, "in", "orig", ctx);
+		// default case: returns the unmodified output
+		expect(output).toBe("no keyword");
+	});
+});

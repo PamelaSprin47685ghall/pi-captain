@@ -30,11 +30,11 @@ Registers seven tools (`captain_run`, `captain_status`, `captain_list`, `captain
 |---|---|
 | `sequential` | Steps run one after another; output of each becomes input of the next |
 | `parallel` | Steps run concurrently; outputs are merged via a `merge` function |
-| `prompt` | A single LLM prompt step |
+| `step` | A single LLM prompt step |
 
 ## Quality gates
 
-Each step can declare a `gate` — a condition evaluated on the step's output before continuing. Built-in presets (from `./captain.ts`): `nonempty`, `json`, `contains`, `llmScore`. On failure, the pipeline can `retry`, `skip`, `abort`, or run an `onFail` branch.
+Each step can declare a `gate` — a condition evaluated on the step's output before continuing. Built-in gate presets (from `./captain.ts`): `regexCI(pattern)`, `command(cmd)`, `file(path)`, `allOf(...gates)`, `llmFast(criteria)`, `user`. On gate failure, the step can `retry`, `skip`, `warn`, or fall back via an `onFail` handler.
 
 ## Commands
 
@@ -52,8 +52,8 @@ Each step can declare a `gate` — a condition evaluated on the step's output be
 Pipelines are `.ts` files stored in `.pi/pipelines/`. Import all types and presets from the barrel:
 
 ```typescript
-import type { Runnable } from "./captain.js";
-import { nonempty, llmScore } from "./captain.js";
+import type { Runnable, Step } from "./captain.ts";
+import { regexCI, retry, skip, concat, firstPass } from "./captain.ts";
 ```
 
 ## Bundled skill
@@ -63,22 +63,26 @@ The extension ships with a `skills/captain/SKILL.md` that is automatically avail
 ## Example
 
 ```typescript
-import type { Runnable } from "./captain.js";
-import { nonempty } from "./captain.js";
+// @name: research-and-summarise
+// @description: Research a topic then produce a concise summary
+import type { Runnable } from "./captain.ts";
+import { regexCI, retry } from "./captain.ts";
 
 export const pipeline: Runnable = {
   kind: "sequential",
   steps: [
     {
-      kind: "prompt",
-      model: { provider: "anthropic", id: "claude-sonnet-4-5" },
-      prompt: "Research this topic: $INPUT",
+      kind: "step",
+      label: "research",
+      prompt: "Research this topic in depth: $INPUT",
+      tools: ["bash", "read"],
     },
     {
-      kind: "prompt",
-      model: { provider: "anthropic", id: "claude-sonnet-4-5" },
+      kind: "step",
+      label: "summarise",
       prompt: "Summarise the research into bullet points: $INPUT",
-      gate: nonempty(),
+      gate: regexCI(".+"),
+      onFail: retry(2),
     },
   ],
 };
@@ -87,24 +91,26 @@ export const pipeline: Runnable = {
 ## Parallel example
 
 ```typescript
-import type { Runnable } from "./captain.js";
-import { joinSections } from "./captain.js";
+// @name: parallel-review
+// @description: Run security and quality reviews concurrently then merge results
+import type { Runnable } from "./captain.ts";
+import { concat } from "./captain.ts";
 
 export const pipeline: Runnable = {
   kind: "parallel",
-  merge: joinSections("---"),
+  merge: concat,
   steps: [
     {
-      kind: "prompt",
-      model: { provider: "anthropic", id: "claude-haiku-4-5" },
-      label: "Security review",
+      kind: "step",
+      label: "security-review",
       prompt: "Review for security issues: $INPUT",
+      tools: ["read", "bash"],
     },
     {
-      kind: "prompt",
-      model: { provider: "anthropic", id: "claude-haiku-4-5" },
-      label: "Quality review",
-      prompt: "Review for code quality: $INPUT",
+      kind: "step",
+      label: "quality-review",
+      prompt: "Review for code quality and style: $INPUT",
+      tools: ["read", "bash"],
     },
   ],
 };

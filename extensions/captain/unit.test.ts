@@ -9,10 +9,13 @@ import { describe, expect, test } from "bun:test";
 
 // ── Import helpers from modules under test ─────────────────────────────────
 
+import type { Api, Model } from "@mariozechner/pi-ai";
 import { parseInlineFlags, parsePipelineAndInput } from "./commands.js";
+import { buildGeneratorPrompt, parseGeneratedPipeline } from "./generator.js";
 import { extractPipeline, resolveAliases } from "./loader.js";
 import {
 	allOf,
+	awaitAll,
 	command,
 	concat,
 	extract,
@@ -20,14 +23,31 @@ import {
 	file,
 	firstPass,
 	full,
+	rank,
 	regexCI,
 	retry,
 	retryWithDelay,
 	skip,
+	summarize,
+	user,
+	vote,
 	warn,
 } from "./presets.js";
-
-import type { Runnable } from "./types.js";
+import { buildCompletionText } from "./tools.js";
+import type {
+	ModelRegistryLike,
+	Parallel,
+	Runnable,
+	Sequential,
+	StepResult,
+} from "./types.js";
+import {
+	collectStepLabels,
+	describeRunnable,
+	resolveModel,
+	statusIcon,
+} from "./types.js";
+import { renderStepLine, statusColor, statusDot } from "./widget.js";
 
 // ── Gate presets ───────────────────────────────────────────────────────────
 
@@ -440,5 +460,409 @@ describe("parseInlineFlags", () => {
 		expect(result.flags.title).toBe("my long title");
 		expect(result.flags.model).toBe("haiku");
 		expect(result.prompt).toBe("text");
+	});
+});
+
+// ── Additional Gate preset coverage ───────────────────────────────────────
+
+describe("user gate", () => {
+	test("returns error string when no ctx provided", async () => {
+		const result = await user({ output: "test output" });
+		expect(typeof result).toBe("string");
+		expect(result).toContain("interactive UI");
+	});
+
+	test("returns error string when ctx has no UI", async () => {
+		const ctx = { hasUI: false, confirm: undefined } as never;
+		const result = await user({ output: "test output", ctx });
+		expect(typeof result).toBe("string");
+		expect(result).toContain("interactive UI");
+	});
+});
+
+// ── Merge presets — vote & rank & awaitAll ────────────────────────────────
+
+describe("vote", () => {
+	test("returns single valid output without LLM", async () => {
+		const result = await vote(["only answer"], undefined as never);
+		expect(result).toBe("only answer");
+	});
+
+	test("returns fallback when all outputs are empty", async () => {
+		const result = await vote(["", "  "], undefined as never);
+		expect(result).toBe("(no output)");
+	});
+
+	test("with 2+ outputs + undefined ctx → llmMerge error string", async () => {
+		const result = await vote(["answer A", "answer B"], undefined as never);
+		expect(typeof result).toBe("string");
+		// llmMerge catches the TypeError and returns "(merge error: ...)"
+		expect(result).toContain("error");
+	});
+});
+
+describe("rank", () => {
+	test("returns single valid output without LLM", async () => {
+		const result = await rank(["best answer"], undefined as never);
+		expect(result).toBe("best answer");
+	});
+
+	test("returns fallback when all outputs are empty", async () => {
+		const result = await rank(["", "  "], undefined as never);
+		expect(result).toBe("(no output)");
+	});
+
+	test("with 2+ outputs + undefined ctx → llmMerge error string", async () => {
+		const result = await rank(["result 1", "result 2"], undefined as never);
+		expect(typeof result).toBe("string");
+		expect(result).toContain("error");
+	});
+});
+
+describe("awaitAll", () => {
+	test("behaves like concat — joins multiple outputs", () => {
+		const result = awaitAll(["A", "B"], undefined as never);
+		expect(result).toContain("A");
+		expect(result).toContain("B");
+	});
+});
+
+// ── Transform presets — summarize ─────────────────────────────────────────
+
+describe("summarize()", () => {
+	test("returns the original output unchanged when no model in ctx", async () => {
+		const transform = summarize();
+		const result = await transform({
+			output: "the original text",
+			original: "",
+			ctx: { model: null, apiKey: null } as never,
+		});
+		expect(result).toBe("the original text");
+	});
+
+	test("returns output unchanged when apiKey is absent", async () => {
+		const transform = summarize();
+		const result = await transform({
+			output: "some content",
+			original: "",
+			ctx: { model: { id: "test" }, apiKey: undefined } as never,
+		});
+		expect(result).toBe("some content");
+	});
+});
+
+// ── types.ts utilities ─────────────────────────────────────────────────────
+
+describe("statusIcon", () => {
+	test("returns ✓ for passed", () => expect(statusIcon("passed")).toBe("✓"));
+	test("returns ✗ for failed", () => expect(statusIcon("failed")).toBe("✗"));
+	test("returns ⊘ for skipped", () => expect(statusIcon("skipped")).toBe("⊘"));
+	test("returns ⏳ for running", () =>
+		expect(statusIcon("running")).toBe("⏳"));
+	test("returns ○ for unknown status", () =>
+		expect(statusIcon("unknown")).toBe("○"));
+});
+
+describe("describeRunnable", () => {
+	test("describes a step", () => {
+		const r: Runnable = {
+			kind: "step",
+			label: "my-step",
+			prompt: "do it",
+			tools: ["bash"],
+		};
+		const desc = describeRunnable(r, 0);
+		expect(desc).toContain("[step]");
+		expect(desc).toContain("my-step");
+	});
+
+	test("describes a sequential with nested steps", () => {
+		const r: Sequential = {
+			kind: "sequential",
+			steps: [
+				{ kind: "step", label: "s1", prompt: "p1", tools: [] },
+				{ kind: "step", label: "s2", prompt: "p2", tools: [] },
+			],
+		};
+		const desc = describeRunnable(r, 0);
+		expect(desc).toContain("[sequential]");
+		expect(desc).toContain("2 steps");
+		expect(desc).toContain("s1");
+		expect(desc).toContain("s2");
+	});
+
+	test("describes a parallel with nested steps", () => {
+		const r: Parallel = {
+			kind: "parallel",
+			steps: [{ kind: "step", label: "b1", prompt: "p1", tools: [] }],
+			merge: concat,
+		};
+		const desc = describeRunnable(r, 2);
+		expect(desc).toContain("[parallel]");
+		expect(desc).toContain("b1");
+	});
+
+	test("describes a step with a named gate", () => {
+		function myGate() {
+			return true as const;
+		}
+		const r: Runnable = {
+			kind: "step",
+			label: "gated",
+			prompt: "do",
+			tools: [],
+			gate: myGate as never,
+		};
+		const desc = describeRunnable(r, 0);
+		expect(desc).toContain("myGate");
+	});
+});
+
+describe("collectStepLabels", () => {
+	test("returns label of a single step", () => {
+		const r: Runnable = {
+			kind: "step",
+			label: "my-label",
+			prompt: "p",
+			tools: [],
+		};
+		expect(collectStepLabels(r)).toEqual(["my-label"]);
+	});
+
+	test("returns all labels from sequential", () => {
+		const r: Sequential = {
+			kind: "sequential",
+			steps: [
+				{ kind: "step", label: "a", prompt: "p", tools: [] },
+				{ kind: "step", label: "b", prompt: "p", tools: [] },
+			],
+		};
+		expect(collectStepLabels(r)).toEqual(["a", "b"]);
+	});
+
+	test("returns all labels from parallel", () => {
+		const r: Parallel = {
+			kind: "parallel",
+			steps: [
+				{ kind: "step", label: "x", prompt: "p", tools: [] },
+				{ kind: "step", label: "y", prompt: "p", tools: [] },
+			],
+			merge: firstPass,
+		};
+		expect(collectStepLabels(r)).toEqual(["x", "y"]);
+	});
+
+	test("returns empty array for unknown kind", () => {
+		expect(collectStepLabels({ kind: "bogus" } as never)).toEqual([]);
+	});
+});
+
+describe("resolveModel", () => {
+	const FAKE_MODEL = {
+		id: "claude-fallback",
+		provider: "anthropic",
+	} as Model<Api>;
+
+	function makeRegistry(
+		models: Array<{ id: string; provider: string }>,
+	): ModelRegistryLike {
+		return {
+			getAll: () => models as Model<Api>[],
+			find: () => undefined,
+			getApiKey: async () => "key",
+		};
+	}
+
+	test("returns fallback when registry is empty", () => {
+		const reg = makeRegistry([]);
+		expect(resolveModel("sonnet", reg, FAKE_MODEL)).toBe(FAKE_MODEL);
+	});
+
+	test("returns exact match from same provider", () => {
+		const model = { id: "claude-sonnet-4-5", provider: "anthropic" };
+		const reg = makeRegistry([model]);
+		const result = resolveModel("claude-sonnet-4-5", reg, FAKE_MODEL);
+		expect(result.id).toBe("claude-sonnet-4-5");
+	});
+
+	test("returns partial match from same provider", () => {
+		const model = { id: "claude-sonnet-3-7", provider: "anthropic" };
+		const reg = makeRegistry([model]);
+		const result = resolveModel("sonnet", reg, FAKE_MODEL);
+		expect(result.id).toBe("claude-sonnet-3-7");
+	});
+
+	test("returns fallback when no match in same provider", () => {
+		const model = { id: "gpt-4", provider: "openai" };
+		const reg = makeRegistry([model]);
+		const result = resolveModel("gpt-4", reg, FAKE_MODEL);
+		expect(result).toBe(FAKE_MODEL);
+	});
+});
+
+// ── widget.ts — statusColor & statusDot & renderStepLine ──────────────────
+
+describe("statusColor", () => {
+	test("passed → success", () => expect(statusColor("passed")).toBe("success"));
+	test("failed → error", () => expect(statusColor("failed")).toBe("error"));
+	test("running → accent", () => expect(statusColor("running")).toBe("accent"));
+	test("other → dim", () => expect(statusColor("idle")).toBe("dim"));
+});
+
+describe("statusDot", () => {
+	test("passed → ✓", () => expect(statusDot("passed")).toBe("✓"));
+	test("failed → ✗", () => expect(statusDot("failed")).toBe("✗"));
+	test("skipped → ⊘", () => expect(statusDot("skipped")).toBe("⊘"));
+	test("running → ●", () => expect(statusDot("running")).toBe("●"));
+	test("idle → ○", () => expect(statusDot("idle")).toBe("○"));
+});
+
+describe("renderStepLine", () => {
+	// Simple mock theme — just returns text unchanged
+	const mockTheme = { fg: (_color: string, text: string) => text };
+
+	const baseResult: StepResult = {
+		label: "my-step",
+		status: "passed",
+		output: "all done",
+		elapsed: 1500,
+		toolCount: 4,
+		toolCallCount: 2,
+		model: "claude-sonnet-4-5",
+		group: undefined,
+	};
+
+	test("renders step label", () => {
+		const line = renderStepLine(baseResult, 100, 0, mockTheme);
+		expect(line).toContain("my-step");
+	});
+
+	test("renders model id in shortened form", () => {
+		const line = renderStepLine(baseResult, 100, 0, mockTheme);
+		// shortenModelId("claude-sonnet-4-5") → "sonnet 4.5"
+		expect(line).toContain("sonnet");
+	});
+
+	test("renders tool counts", () => {
+		const line = renderStepLine(baseResult, 100, 0, mockTheme);
+		expect(line).toContain("2/4");
+	});
+
+	test("renders elapsed time", () => {
+		const line = renderStepLine(baseResult, 100, 0, mockTheme);
+		expect(line).toContain("1.5s");
+	});
+
+	test("renders step with error output when output is empty", () => {
+		const r: StepResult = {
+			...baseResult,
+			output: "",
+			error: "something went wrong",
+		};
+		const line = renderStepLine(r, 100, 0, mockTheme);
+		expect(line).toContain("my-step");
+	});
+
+	test("handles indent correctly", () => {
+		const line = renderStepLine(baseResult, 100, 4, mockTheme);
+		expect(line.startsWith("    ")).toBe(true);
+	});
+
+	test("renders failed step", () => {
+		const r: StepResult = {
+			...baseResult,
+			status: "failed",
+			output: "Error occurred",
+		};
+		const line = renderStepLine(r, 100, 0, mockTheme);
+		expect(line).toContain("my-step");
+	});
+});
+
+// ── generator.ts — buildGeneratorPrompt & parseGeneratedPipeline ──────────
+
+describe("buildGeneratorPrompt", () => {
+	test("returns a non-empty string containing the goal", () => {
+		const prompt = buildGeneratorPrompt("review security vulnerabilities");
+		expect(typeof prompt).toBe("string");
+		expect(prompt.length).toBeGreaterThan(0);
+		expect(prompt).toContain("review security vulnerabilities");
+	});
+
+	test("includes import hints and export format", () => {
+		const prompt = buildGeneratorPrompt("test pipeline");
+		expect(prompt).toContain("export const pipeline");
+		expect(prompt).toContain("captain.ts");
+	});
+});
+
+describe("parseGeneratedPipeline", () => {
+	const validSource = [
+		"// @name: my-pipeline",
+		"// @description: Does something useful",
+		"export const pipeline = { kind: 'step', label: 'x', prompt: 'y', tools: [] };",
+	].join("\n");
+
+	test("parses name and description from valid source", () => {
+		const result = parseGeneratedPipeline(validSource);
+		expect(result.name).toBe("my-pipeline");
+		expect(result.description).toBe("Does something useful");
+	});
+
+	test("extracts source from markdown fences", () => {
+		const fenced = `\`\`\`typescript\n${validSource}\n\`\`\``;
+		const result = parseGeneratedPipeline(fenced);
+		expect(result.name).toBe("my-pipeline");
+	});
+
+	test("throws when @name comment is missing", () => {
+		const bad = "export const pipeline = {};";
+		expect(() => parseGeneratedPipeline(bad)).toThrow("@name");
+	});
+
+	test("throws when export const pipeline is missing", () => {
+		const bad = "// @name: my-pipe\n// no pipeline export";
+		expect(() => parseGeneratedPipeline(bad)).toThrow("export const pipeline");
+	});
+
+	test("empty description when @description comment is absent", () => {
+		const src = "// @name: pipe\nexport const pipeline = {};";
+		const result = parseGeneratedPipeline(src);
+		expect(result.description).toBe("");
+	});
+});
+
+// ── tools.ts — buildCompletionText ────────────────────────────────────────
+
+describe("buildCompletionText", () => {
+	const mockResults: StepResult[] = [
+		{ label: "s1", status: "passed", output: "out1", elapsed: 500 },
+		{ label: "s2", status: "failed", output: "", error: "bad", elapsed: 100 },
+		{ label: "s3", status: "skipped", output: "", elapsed: 50 },
+	];
+
+	test("includes pipeline name in output", () => {
+		const text = buildCompletionText("my-pipe", "final output", mockResults);
+		expect(text).toContain("my-pipe");
+	});
+
+	test("reports step counts correctly", () => {
+		const text = buildCompletionText("pipe", "out", mockResults);
+		expect(text).toContain("3");
+		expect(text).toContain("1 passed");
+		expect(text).toContain("1 failed");
+		expect(text).toContain("1 skipped");
+	});
+
+	test("includes the final output", () => {
+		const text = buildCompletionText("pipe", "final result here", mockResults);
+		expect(text).toContain("final result here");
+	});
+
+	test("includes elapsed time", () => {
+		const start = Date.now() - 2000;
+		const end = Date.now();
+		const text = buildCompletionText("pipe", "out", [], start, end);
+		expect(text).toMatch(/\d+\.\d+s/);
 	});
 });

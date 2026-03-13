@@ -1,3 +1,4 @@
+// NEED USER APPROVAL FOR ANY CHANGE
 // ── Architecture: Flat Module Structure — Dependency Boundaries ───────────
 // Enforces structural invariants for the flat (non-subdirectory) captain layout.
 //
@@ -43,7 +44,7 @@ function importsOf(file: string): string[] {
 
 /** All captain source files (flat, same dir) — excluding test files */
 const CAPTAIN_FILES = [
-	"captain.ts",
+	"api.ts",
 	"commands.ts",
 	"executor.ts",
 	"generator.ts",
@@ -99,6 +100,14 @@ describe("Flat module structure — dependency boundaries", () => {
 		const forbidden = new Set(["commands", "tools", "widget"]);
 		const violations = captainImportsOf("loader.ts").filter((b) =>
 			forbidden.has(b),
+		);
+		expect(violations).toEqual([]);
+	});
+
+	test("api.ts must only import from presets.ts and types.ts among captain files", () => {
+		const allowed = new Set(["presets", "types"]);
+		const violations = captainImportsOf("api.ts").filter(
+			(b) => !allowed.has(b),
 		);
 		expect(violations).toEqual([]);
 	});
