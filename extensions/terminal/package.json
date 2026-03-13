@@ -3,7 +3,12 @@
 	"version": "0.1.1",
 	"description": "Adds /terminal and /t commands to run shell commands in the current working directory and display output inline — with smart truncation and TUI notifications.",
 	"keywords": [
-		"pi-package"
+		"pi-package",
+		"pi-terminal",
+		"pi-bash",
+		"pi-exec",
+		"pi-shell",
+		"pi-run"
 	],
 	"license": "MIT",
 	"pi": {
