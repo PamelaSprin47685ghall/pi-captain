@@ -8,7 +8,7 @@
       "width": 1580,
       "height": 760,
       "color": "1",
-      "label": "⟳ RECURSIVE — patterns nest infinitely"
+      "label": "\u27f3 RECURSIVE \u2014 patterns nest infinitely"
     },
     {
       "type": "group",
@@ -51,15 +51,6 @@
     },
     {
       "type": "group",
-      "id": "r1k2l3m4n5o6p7q8",
-      "x": -270,
-      "y": 1320,
-      "width": 490,
-      "height": 440,
-      "label": "Pool (same step × N)"
-    },
-    {
-      "type": "group",
       "id": "s4n5o6p7q8r9s0t1",
       "x": 260,
       "y": 1320,
@@ -88,16 +79,6 @@
     },
     {
       "type": "group",
-      "id": "rx08h9i0j1k2l3m4",
-      "x": 140,
-      "y": 1930,
-      "width": 520,
-      "height": 150,
-      "color": "4",
-      "label": "pool (nested)"
-    },
-    {
-      "type": "group",
       "id": "grp_pipeline_ts01",
       "x": -560,
       "y": -120,
@@ -114,7 +95,7 @@
       "width": 480,
       "height": 460,
       "color": "2",
-      "text": "## Step (atomic unit)\n\n```ts\ninterface Step {\n  kind: \"step\";\n  label: string;\n  model?: ModelId;     // \"sonnet\"|\"flash\"|\"haiku\"|\"opus\"\n  tools?: string[];    // e.g. [\"bash\", \"read\"]\n  temperature?: number;\n  systemPrompt?: string;\n  skills?: string[];\n  prompt: string;      // supports $INPUT, $ORIGINAL\n  gate?: Gate;\n  onFail?: OnFail;\n  transform: Transform;\n}\n```"
+      "text": "## Prompt Step (atomic unit)\n\n```ts\ninterface Step {\n  kind: \"prompt\";\n  label?: string;\n  model?: { provider: string; id: string };\n  tools?: string[];\n  temperature?: number;\n  systemPrompt?: string;\n  skills?: string[];\n  prompt: string;   // supports $INPUT, $ORIGINAL\n  gate?: Gate;\n  onFail?: OnFail;\n  transform?: Transform;\n}\n```"
     },
     {
       "type": "text",
@@ -124,7 +105,7 @@
       "width": 400,
       "height": 440,
       "color": "6",
-      "text": "## 📦 pipeline.ts\n\nExport any `Runnable` — fully type-safe\n\n```ts\nimport { retry, skip } from \"./gates/on-fail.js\";\nimport { command } from \"./gates/presets.js\";\nimport { concat, vote } from \"./merge.js\";\nimport { full } from \"./transforms/presets.js\";\n\nexport const pipeline: Parallel = {\n  kind: \"parallel\",\n  steps: [researchStep, analyzeStep],\n  merge: vote,\n  gate: command(\"bun test\"),\n  onFail: retry(2),\n  transform: full,\n};\n```\n\nLoad with: `captain load <path>`"
+      "text": "## pipeline.ts\n\nExport any `Runnable` -- fully type-safe\n\n```ts\nimport type { Runnable } from \"./captain.js\";\nimport { nonempty, llmScore, joinSections } from \"./captain.js\";\n\nexport const pipeline: Runnable = {\n  kind: \"parallel\",\n  steps: [researchStep, analyzeStep],\n  merge: joinSections(\"---\"),\n  gate: nonempty(),\n  onFail: { action: \"retry\", max: 2 },\n};\n```\n\nLoad with: `captain load <path>`"
     },
     {
       "type": "text",
@@ -134,7 +115,7 @@
       "width": 400,
       "height": 440,
       "color": "6",
-      "text": "## 🔧 Built-in Presets\n\n**Gates** (`gates/presets.ts`)\n`command(cmd)` — exit 0 passes\n`file(path)` — file must exist\n`regex(pat)` — output matches\n`allOf(...gates)`, `anyOf(...gates)`\n`llm(prompt)`, `llmFast(prompt)`\n\n**OnFail** (`gates/on-fail.ts`)\n`retry(max?)`, `retryWithDelay(max, ms)`\n`fallback(step)`, `skip`, `warn`\n\n**Transforms** (`transforms/presets.ts`)\n`full`, `extract(key)`, `summarize()`\n\n**Merge** (`merge.ts`)\n`concat`, `awaitAll`, `rank`, `vote`, `firstPass`"
+      "text": "## Built-in Presets\n\nImport from `\"./captain.js\"`\n\n**Gates**\n`nonempty()` -- output is not empty\n`json()` -- output is valid JSON\n`contains(str)` -- output includes string\n`llmScore(prompt, min)` -- LLM scores output\n\n**OnFail**\n`{ action: \"retry\", max? }`\n`{ action: \"skip\" }`\n`{ action: \"abort\" }`\n`{ action: \"fallback\", step }`\n\n**Merge** (`MergeFn` presets)\n`joinSections(sep)`, `keepFirst`, `keepLast`\n`vote`, `interleave`"
     },
     {
       "type": "text",
@@ -167,25 +148,6 @@
     },
     {
       "type": "text",
-      "id": "f2l3m4n5o6p7q8r9",
-      "x": -250,
-      "y": 1350,
-      "width": 450,
-      "height": 55,
-      "color": "2",
-      "text": "**step: search** × 5"
-    },
-    {
-      "type": "text",
-      "id": "m3m4n5o6p7q8r9s0",
-      "x": -250,
-      "y": 1420,
-      "width": 450,
-      "height": 310,
-      "text": "Replicate **one** step N times\nSame type, different inputs\n\n```ts\nconst p: Pool = {\n  kind: \"pool\",\n  step: searchStep,\n  count: 5,\n  merge: vote,\n};\n```"
-    },
-    {
-      "type": "text",
       "id": "e5o6p7q8r9s0t1u2",
       "x": 280,
       "y": 1350,
@@ -201,27 +163,7 @@
       "y": 1420,
       "width": 450,
       "height": 310,
-      "text": "Run **different** steps concurrently\nEach has its own prompt & gate\n\n```ts\nconst par: Parallel = {\n  kind: \"parallel\",\n  steps: [search, lint, typecheck],\n  merge: awaitAll,\n};\n```"
-    },
-    {
-      "type": "text",
-      "id": "wt01a2b3c4d5e6f7",
-      "x": 860,
-      "y": 1280,
-      "width": 480,
-      "height": 500,
-      "color": "3",
-      "text": "## 🌲 Worktree Isolation Rule\n\nEvery **parallel boundary** automatically creates\na git worktree — no config needed.\n\n```ts\n// Derived path -- zero config\n// .worktrees/{pipeline}-{branch}-{hash}\ntype WorktreePath = string;\n```\n\n**The rule is simple:**\n- `parallel` or `pool` → each branch gets its own worktree\n- `sequential` steps *inside* a parallel share that worktree\n- `sequential` steps *outside* parallel → main tree\n- Nested parallel → nested worktrees\n\n**parallel = worktree, always.**\nZero configuration. The topology *is* the isolation model."
-    },
-    {
-      "type": "text",
-      "id": "wt02b3c4d5e6f7g8",
-      "x": 860,
-      "y": 1820,
-      "width": 480,
-      "height": 520,
-      "color": "3",
-      "text": "## Merge Step (main tree)\n\nAfter parallel completes, merge runs on **main tree**:\n\n```ts\nconst mergeStep: Step = {\n  kind: \"step\",\n  label: \"merge\",\n  prompt: (ctx) =>\n    `${ctx.$INPUT}\\n${ctx.$ORIGINAL}`,\n  gate: command(\"git diff --check && bun test\"),\n  onFail: retry(3),\n  transform: full,\n};\n```\n\nReads worktree diffs → resolves conflicts →\nvalidated by gate → pipeline continues on main tree.\n**Just a regular step.** No special merge machinery."
+      "text": "Run **different** steps concurrently\nEach has its own prompt & gate\n\n```ts\nconst par: Parallel = {\n  kind: \"parallel\",\n  steps: [search, lint, typecheck],\n  merge: joinSections(\"---\"),\n};\n```"
     },
     {
       "type": "text",
@@ -230,7 +172,7 @@
       "y": 390,
       "width": 520,
       "height": 590,
-      "text": "## Gate & Function Types\n\n```ts\n// Gate -- pure function\ntype Gate = (params: {\n  output: string;\n  ctx?: GateCtx;\n}) => true | string | Promise;\n// true = pass, string = failure reason\n\n// OnFail -- pure function\ntype OnFail = (ctx: OnFailCtx) =>\n  OnFailResult | Promise;\n\ntype OnFailResult =\n  | { action: \"retry\" | \"fail\" | \"skip\" | \"warn\" }\n  | { action: \"fallback\"; step: Step };\n\n// Transform -- pure function\ntype Transform = (params: {\n  output: string;\n  original: string;\n  ctx: TransformCtx;\n}) => string | Promise;\n\n// MergeFn -- pure function\ntype MergeFn = (\n  outputs: string[],\n  ctx: MergeCtx,\n) => string | Promise;\n```"
+      "text": "## Gate & Function Types\n\n```ts\n// Gate -- pure function\ntype Gate = (params: {\n  output: string;\n  ctx?: GateCtx;\n}) => true | string | Promise<true | string>;\n// true = pass, string = failure reason\n\n// OnFail -- plain object or function\ntype OnFail =\n  | { action: \"retry\"; max?: number }\n  | { action: \"skip\" | \"abort\" }\n  | { action: \"fallback\"; step: Step };\n\n// Transform -- pure function\ntype Transform = (params: {\n  output: string;\n  original: string;\n}) => string | Promise<string>;\n\n// MergeFn -- pure function\ntype MergeFn = (\n  outputs: string[],\n  ctx: MergeCtx,\n) => string | Promise<string>;\n```"
     },
     {
       "type": "text",
@@ -240,7 +182,7 @@
       "width": 420,
       "height": 700,
       "color": "2",
-      "text": "## Core Type Union\n\n```ts\n// Every composable unit is a Runnable\ntype Runnable =\n  | Step\n  | Sequential\n  | Pool\n  | Parallel;\n\ninterface Sequential {\n  kind: \"sequential\";\n  steps: Runnable[];\n  gate?: Gate;\n  onFail?: OnFail;\n  transform?: Transform;\n}\n\ninterface Pool {\n  kind: \"pool\";\n  step: Runnable;\n  count: number;\n  merge: MergeFn;\n  gate?: Gate;\n  onFail?: OnFail;\n  transform?: Transform;\n}\n\ninterface Parallel {\n  kind: \"parallel\";\n  steps: Runnable[];\n  merge: MergeFn;\n  gate?: Gate;\n  onFail?: OnFail;\n  transform?: Transform;\n}\n```"
+      "text": "## Core Type Union\n\n```ts\n// Every composable unit is a Runnable\ntype Runnable =\n  | Step\n  | Sequential\n  | Parallel;\n\ninterface Sequential {\n  kind: \"sequential\";\n  steps: Runnable[];\n  gate?: Gate;\n  onFail?: OnFail;\n  transform?: Transform;\n}\n\ninterface Parallel {\n  kind: \"parallel\";\n  steps: Runnable[];\n  merge: MergeFn;\n  gate?: Gate;\n  onFail?: OnFail;\n  transform?: Transform;\n}\n```"
     },
     {
       "type": "text",
@@ -250,7 +192,7 @@
       "width": 500,
       "height": 130,
       "color": "1",
-      "text": "# Agent Orchestration\n\nComposable steps → groups → pipelines\n**Fully type-safe — TypeScript all the way down**"
+      "text": "# Agent Orchestration\n\nComposable steps \u2192 groups \u2192 pipelines\n**Fully type-safe \u2014 TypeScript all the way down**"
     },
     {
       "type": "text",
@@ -260,7 +202,7 @@
       "width": 700,
       "height": 320,
       "color": "1",
-      "text": "## Recursive Composition\n\n```ts\n// Recursive -- any slot accepts Runnable (Step|Sequential|Pool|Parallel)\nconst pipeline: Parallel = {\n  kind: \"parallel\",\n  steps: [\n    innerParallel,   // { kind: \"parallel\", steps: [search, analyze] }\n    { kind: \"sequential\", steps: [poolOf3, reviewStep] },\n  ],\n  merge: awaitAll,\n};\n```"
+      "text": "## Recursive Composition\n\n```ts\n// Any slot accepts Runnable (Step | Sequential | Parallel)\nconst pipeline: Parallel = {\n  kind: \"parallel\",\n  steps: [\n    innerParallel, // { kind: \"parallel\", steps: [search, analyze] }\n    { kind: \"sequential\", steps: [planStep, reviewStep] },\n  ],\n  merge: joinSections(\"---\"),\n};\n```"
     },
     {
       "type": "text",
@@ -269,7 +211,7 @@
       "y": 2440,
       "width": 400,
       "height": 100,
-      "text": "Any slot that accepts a **step**\nalso accepts **sequential**, **pool**,\nor **parallel** → infinite nesting"
+      "text": "Any slot that accepts a **step**\nalso accepts **sequential**\nor **parallel** -- infinite nesting"
     },
     {
       "type": "text",
@@ -298,46 +240,7 @@
       "y": 2010,
       "width": 500,
       "height": 50,
-      "text": "↑ 2 different steps run concurrently"
-    },
-    {
-      "type": "text",
-      "id": "rx09i0j1k2l3m4n5",
-      "x": 160,
-      "y": 1955,
-      "width": 240,
-      "height": 45,
-      "color": "2",
-      "text": "**plan-build** × 3"
-    },
-    {
-      "type": "text",
-      "id": "rx11k2l3m4n5o6p7",
-      "x": 160,
-      "y": 2010,
-      "width": 325,
-      "height": 50,
-      "text": "↑ same group replicated 3 times"
-    },
-    {
-      "type": "text",
-      "id": "rx10j1k2l3m4n5o6",
-      "x": 420,
-      "y": 1955,
-      "width": 240,
-      "height": 45,
-      "color": "2",
-      "text": "**plan-build** × 3"
-    },
-    {
-      "type": "text",
-      "id": "4077fa3c90085853",
-      "x": 325,
-      "y": 2140,
-      "width": 150,
-      "height": 55,
-      "color": "2",
-      "text": "**step: review**"
+      "text": "\u2191 2 different steps run concurrently"
     },
     {
       "type": "text",
@@ -347,7 +250,7 @@
       "width": 420,
       "height": 340,
       "color": "3",
-      "text": "## 🚦 Composition Gates\n\nGates validate the **scope** they're on:\n- `sequential.gate` → validates final chained output\n- `pool.gate` → validates merged output\n- `parallel.gate` → validates merged output\n\n**retry = retry that scope**\nThe topology is the retry boundary.\n\nNo new types — same `Gate` + `OnFail`,\njust optional on composition nodes."
+      "text": "## Composition Gates\n\nGates validate the **scope** they are on:\n- `sequential.gate` -- validates final chained output\n- `parallel.gate` -- validates merged output\n\n**retry = retry that scope**\nThe topology is the retry boundary.\n\nNo new types -- same `Gate` + `OnFail`,\njust optional on composition nodes."
     }
   ],
   "edges": [
@@ -396,23 +299,6 @@
       "toEnd": "none"
     },
     {
-      "id": "edge011",
-      "fromNode": "rx09i0j1k2l3m4n5",
-      "fromSide": "right",
-      "toNode": "rx10j1k2l3m4n5o6",
-      "toSide": "left",
-      "toEnd": "none"
-    },
-    {
-      "id": "edge012",
-      "fromNode": "rx04d5e6f7g8h9i0",
-      "fromSide": "right",
-      "toNode": "rx08h9i0j1k2l3m4",
-      "toSide": "left",
-      "toEnd": "none",
-      "label": "concurrent"
-    },
-    {
       "id": "edge013",
       "fromNode": "ty01a2b3c4d5e6f7",
       "fromSide": "right",
@@ -429,14 +315,6 @@
       "toSide": "top",
       "toEnd": "arrow",
       "label": "composes"
-    },
-    {
-      "id": "f91ca9ed4281b288",
-      "fromNode": "rx08h9i0j1k2l3m4",
-      "fromSide": "bottom",
-      "toNode": "4077fa3c90085853",
-      "toSide": "top",
-      "toEnd": "arrow"
     },
     {
       "id": "edge015",
