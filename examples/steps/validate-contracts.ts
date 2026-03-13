@@ -6,8 +6,7 @@
 //   3. Pre-written test — runnable code, not "write a test that..."
 //   4. Runnable verification — a real shell command, not a description
 
-import { fallback, regexCI } from "../../extensions/captain/gates/index.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import { fallback, full, regexCI } from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 import { contractTasks } from "./contract-tasks.js";
 

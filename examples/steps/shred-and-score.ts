@@ -2,8 +2,7 @@
 // Stage 3 of shredder: Score each unit's complexity on three axes and
 // re-split any unit above the Haiku-safe threshold (composite ≤ 2).
 
-import { retry } from "../../extensions/captain/gates/index.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import { full, retry } from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 
 const prompt = `

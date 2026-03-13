@@ -9,12 +9,11 @@ import {
 	retry,
 	summarize,
 	warn,
-} from "../../extensions/captain/index.public.js";
+} from "../../extensions/captain/api.js";
 import type {
 	Gate,
 	OnFail,
 	Parallel,
-	Pool,
 	Sequential,
 	Step,
 } from "../../extensions/captain/types.js";
@@ -83,7 +82,11 @@ const ranker: Step = {
 	onFail: warn,
 	transform: full,
 };
-const rankPool: Pool = { kind: "pool", step: ranker, count: 3, merge: rank };
+const rankPool: Parallel = {
+	kind: "parallel",
+	steps: [ranker, ranker, ranker],
+	merge: rank,
+};
 
 const summarizeStep: Step = {
 	kind: "step",

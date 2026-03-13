@@ -25,7 +25,7 @@
 // Steps:  extensions/captain/steps/{write-spec,tdd-red,tdd-green,write-docs,
 //         review-code,fix-review-issues,prepare-pr}.ts
 
-import { concat } from "../../extensions/captain/core/merge.js";
+import { concat } from "../../extensions/captain/presets.js";
 import type { Parallel, Runnable } from "../../extensions/captain/types.js";
 import { preparePR } from "../steps/prepare-pr.js";
 import { reviewCode } from "../steps/review-code.js";

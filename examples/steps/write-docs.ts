@@ -2,8 +2,7 @@
 // Stage 3b of spec-tdd: Doc-writer produces developer documentation from
 // the spec. Runs in parallel with TDD Green.
 
-import { llmFast, warn } from "../../extensions/captain/gates/index.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import { full, llmFast, warn } from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 
 const prompt = `

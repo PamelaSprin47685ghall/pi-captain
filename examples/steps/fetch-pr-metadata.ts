@@ -2,8 +2,7 @@
 // Four sub-steps that together fetch and validate PR metadata from GitHub.
 // Layered: auth-check → gh-call → emit-metadata, with auth-failure validation.
 
-import { retry } from "../../extensions/captain/gates/index.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import { full, retry } from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 
 // ── Layer 1: Auth Check ───────────────────────────────────────────────────

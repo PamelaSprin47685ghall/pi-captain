@@ -52,12 +52,8 @@
 //         contract-tasks, shred-and-score, validate-contracts, resolve-dependencies,
 //         generate-execution-spec, render-canvas}.ts
 
-import { awaitAll, rank } from "../../extensions/captain/core/merge.js";
-import type {
-	Parallel,
-	Pool,
-	Runnable,
-} from "../../extensions/captain/types.js";
+import { awaitAll, rank } from "../../extensions/captain/presets.js";
+import type { Parallel, Runnable } from "../../extensions/captain/types.js";
 import { bddScenarios } from "../steps/bdd-scenarios.js";
 import { contractTasks } from "../steps/contract-tasks.js";
 import { earsStructure } from "../steps/ears-structure.js";
@@ -73,10 +69,9 @@ import { validateContracts } from "../steps/validate-contracts.js";
 // story split. The ranked merge picks the one with the most business-rule
 // isolation and smallest estimated story size.
 
-const slicePool: Pool = {
-	kind: "pool",
-	step: sliceStoriesAi,
-	count: 3,
+const slicePool: Parallel = {
+	kind: "parallel",
+	steps: [sliceStoriesAi, sliceStoriesAi, sliceStoriesAi],
 	merge: rank,
 };
 

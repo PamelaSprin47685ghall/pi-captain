@@ -2,8 +2,7 @@
 // Stage 5 of shredder: Parse dependency graph from validated units, detect
 // cycles, topological sort into parallelizable execution layers.
 
-import { regexCI, retry } from "../../extensions/captain/gates/index.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import { full, regexCI, retry } from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 
 const prompt = `

@@ -1,8 +1,6 @@
 // ── research-swarm-phases-a.ts — Phases 1-3: plan, research, consolidate ───
 
-import { concat } from "../../extensions/captain/core/merge.js";
-import { warn } from "../../extensions/captain/gates/on-fail.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import { concat, full, warn } from "../../extensions/captain/presets.js";
 import type { Parallel, Step } from "../../extensions/captain/types.js";
 
 // ── Phase 1: Plan ─────────────────────────────────────────────────────────

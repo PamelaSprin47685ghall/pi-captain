@@ -1,105 +1,105 @@
-// ── Architecture: Functional Core / Imperative Shell ─────────────────────
-// Enforces layer-boundary rules from Basic_knowledge.md §Architecture.
+// ── Architecture: Flat Module Structure — Dependency Boundaries ───────────
+// Enforces structural invariants for the flat (non-subdirectory) captain layout.
 //
 // Rules:
-//   core/   → must NOT import from infra/, shell/
-//   infra/  → must NOT import from shell/
-//
-// These are the boundaries that matter for the FC/IS pattern. Other folders
-// (gates/, steps/, composition/, transforms/, tools/, ui/) sit at the shell
-// level and may depend on core freely.
+//   executor.ts  → must NOT import from tools.ts, commands.ts, or widget.ts
+//   types.ts     → must NOT import from any other captain file
+//   presets.ts   → must only import from types.ts (among captain files)
 //
 // Run with: bun test extensions/captain/arch.test.ts
 
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const ROOT = new URL(".", import.meta.url).pathname;
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-/** Collect all .ts source files (excluding .test.ts) under a directory */
-function tsFiles(dir: string): string[] {
-	const out: string[] = [];
-	for (const entry of readdirSync(dir, { withFileTypes: true })) {
-		const full = join(dir, entry.name);
-		if (entry.isDirectory()) out.push(...tsFiles(full));
-		else if (
-			entry.isFile() &&
-			full.endsWith(".ts") &&
-			!full.endsWith(".test.ts")
-		)
-			out.push(full);
-	}
-	return out;
-}
-
-/** Extract all relative import paths from a TS file (static analysis, no AST needed) */
+/** Extract all relative import specifiers from a TS source file (static, no AST) */
 function relativeImports(filePath: string): string[] {
 	const src = readFileSync(filePath, "utf8");
 	const hits: string[] = [];
-	// Matches: from "...", import "...", export ... from "..."
-	for (const m of src.matchAll(/(?:from|import)\s+["']([^"']+)["']/g)) {
-		const p = m[1];
-		if (p.startsWith(".")) hits.push(p);
+	for (const line of src.split("\n")) {
+		const trimmed = line.trimStart();
+		// Skip comment lines
+		if (trimmed.startsWith("//") || trimmed.startsWith("*")) continue;
+		for (const m of trimmed.matchAll(/(?:from|import)\s+["']([^"']+)["']/g)) {
+			const p = m[1];
+			if (p.startsWith(".")) hits.push(p);
+		}
 	}
 	return hits;
 }
 
-/**
- * Returns all violations where a file in `fromDir` imports something that
- * resolves into `toDir`.
- */
-function boundaryViolations(
-	fromDir: string,
-	toDir: string,
-): Array<{ file: string; importPath: string }> {
-	const violations: Array<{ file: string; importPath: string }> = [];
-	const fromDirAbs = join(ROOT, fromDir);
-	const toDirAbs = join(ROOT, toDir);
+/** Resolve a relative import specifier to just the basename (no ext) */
+function basename(imp: string): string {
+	return (imp.split("/").pop() ?? "").replace(/\.(js|ts)$/, "");
+}
 
-	// Guard: skip if either folder doesn't exist yet
-	try {
-		statSync(fromDirAbs);
-		statSync(toDirAbs);
-	} catch {
-		return [];
-	}
+function importsOf(file: string): string[] {
+	return relativeImports(join(ROOT, file)).map(basename);
+}
 
-	for (const file of tsFiles(fromDirAbs)) {
-		for (const imp of relativeImports(file)) {
-			// Resolve the import relative to the importing file's directory
-			const resolved = join(file, "..", imp);
-			// Normalise away .js extensions used in TS ESM output
-			const resolvedNorm = resolved.replace(/\.js$/, "");
-			const toDirNorm = toDirAbs;
-			if (resolvedNorm.startsWith(toDirNorm)) {
-				violations.push({
-					file: relative(ROOT, file),
-					importPath: imp,
-				});
-			}
-		}
-	}
-	return violations;
+/** All captain source files (flat, same dir) — excluding test files */
+const CAPTAIN_FILES = [
+	"captain.ts",
+	"commands.ts",
+	"executor.ts",
+	"generator.ts",
+	"loader.ts",
+	"presets.ts",
+	"session.ts",
+	"state.ts",
+	"tools.ts",
+	"types.ts",
+	"widget.ts",
+];
+const CAPTAIN_BASENAMES = new Set(
+	CAPTAIN_FILES.map((f) => f.replace(/\.ts$/, "")),
+);
+
+function captainImportsOf(file: string): string[] {
+	return importsOf(file).filter((b) => CAPTAIN_BASENAMES.has(b));
 }
 
 // ── rules ──────────────────────────────────────────────────────────────────
 
-describe("Functional Core / Imperative Shell — layer boundaries", () => {
-	test("core/ must not import from infra/", () => {
-		const violations = boundaryViolations("core", "infra");
+describe("Flat module structure — dependency boundaries", () => {
+	test("executor.ts must not import from tools.ts, commands.ts, or widget.ts", () => {
+		const forbidden = new Set(["tools", "commands", "widget"]);
+		const violations = captainImportsOf("executor.ts").filter((b) =>
+			forbidden.has(b),
+		);
 		expect(violations).toEqual([]);
 	});
 
-	test("core/ must not import from shell/", () => {
-		const violations = boundaryViolations("core", "shell");
+	test("types.ts must not import from any other captain file", () => {
+		const violations = captainImportsOf("types.ts");
 		expect(violations).toEqual([]);
 	});
 
-	test("infra/ must not import from shell/", () => {
-		const violations = boundaryViolations("infra", "shell");
+	test("presets.ts must only import types.ts among captain files", () => {
+		const allowed = new Set(["types"]);
+		const violations = captainImportsOf("presets.ts").filter(
+			(b) => !allowed.has(b),
+		);
+		expect(violations).toEqual([]);
+	});
+
+	test("session.ts must not import from commands.ts or widget.ts", () => {
+		const forbidden = new Set(["commands", "widget"]);
+		const violations = captainImportsOf("session.ts").filter((b) =>
+			forbidden.has(b),
+		);
+		expect(violations).toEqual([]);
+	});
+
+	test("loader.ts must not import from commands.ts, tools.ts, or widget.ts", () => {
+		const forbidden = new Set(["commands", "tools", "widget"]);
+		const violations = captainImportsOf("loader.ts").filter((b) =>
+			forbidden.has(b),
+		);
 		expect(violations).toEqual([]);
 	});
 });

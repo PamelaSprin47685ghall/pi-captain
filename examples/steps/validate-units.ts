@@ -2,8 +2,7 @@
 // Stage 4 of shredder: Flash dry-run — confirm each unit can be executed
 // in a single pass with no ambiguity. Falls back to re-shred on failure.
 
-import { regexCI, retry } from "../../extensions/captain/gates/index.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import { full, regexCI, retry } from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 
 const prompt = `

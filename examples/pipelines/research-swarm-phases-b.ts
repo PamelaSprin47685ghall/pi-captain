@@ -1,8 +1,6 @@
 // ── research-swarm-phases-b.ts — Phases 4-5: vote, synthesize ───────────────
 
-import { concat } from "../../extensions/captain/core/merge.js";
-import { warn } from "../../extensions/captain/gates/on-fail.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import { concat, full, warn } from "../../extensions/captain/presets.js";
 import type { Parallel, Step } from "../../extensions/captain/types.js";
 import { voterStep } from "./research-swarm-phases-a.js";
 

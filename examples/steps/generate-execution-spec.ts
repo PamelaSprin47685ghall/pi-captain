@@ -2,8 +2,7 @@
 // Stage 7 of shredder: Convert the task tree into an executable captain
 // TypeScript pipeline file saved to .pi/pipelines/execution-pipeline.ts.
 
-import { file, retry } from "../../extensions/captain/gates/index.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import { file, full, retry } from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 
 const prompt = `

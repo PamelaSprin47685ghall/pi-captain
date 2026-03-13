@@ -38,12 +38,8 @@
 //         fetch-pr-metadata-gh-call, fetch-pr-metadata-emit,
 //         fetch-pr-files, review-pr-file, synthesize-pr-verdict}.ts
 
-import { concat } from "../../extensions/captain/core/merge.js";
-import type {
-	Parallel,
-	Pool,
-	Runnable,
-} from "../../extensions/captain/types.js";
+import { concat } from "../../extensions/captain/presets.js";
+import type { Parallel, Runnable } from "../../extensions/captain/types.js";
 import { fetchPrFiles } from "../steps/fetch-pr-files.js";
 import {
 	fetchPrMetadataAuthCheck,
@@ -80,10 +76,9 @@ const fetchAndValidateAuth: Parallel = {
 // Each file gets its own review pass. Pool count is set to 10 to handle
 // PRs with up to 10 changed files fully in parallel; larger PRs are batched.
 
-const reviewFilesPool: Pool = {
-	kind: "pool",
-	step: reviewPrFile,
-	count: 10,
+const reviewFilesPool: Parallel = {
+	kind: "parallel",
+	steps: new Array(10).fill(reviewPrFile) as Parallel["steps"],
 	merge: concat,
 };
 

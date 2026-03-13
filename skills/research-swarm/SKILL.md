@@ -169,6 +169,12 @@ After completing a research swarm, examine what happened — mistakes, gaps, new
 
 ---
 
+## Lessons Learned
+
+- ⚠️ **Gotcha: node_modules inflate TS file counts.** When counting `.ts` files as a proxy for extension size, use `-maxdepth 4` but still check if most files are in `node_modules/` subdirs inside the extension. `w-winter-dot314` had 76 TS files but most were bundled `node_modules` — actual source was ~20 files. Use `| grep -v "node_modules"` or scan the source structure manually for top contenders.
+- ⚠️ **Gotcha: no native multi-agent tools (TeamCreate/Task/SendMessage) in base Claude Code.** These tools are only available when running in the pi multi-agent mode. When running as a regular Claude Code assistant, simulate the swarm sequentially: assign angles, collect findings per angle into the shared registry, then score. The democratic output quality is equivalent.
+- **Pattern: "Skills injection" is the standout pattern for multi-agent extensions.** Passing skill markdown directly into subagent system prompts (rather than listing files or injecting into context) solves the domain-knowledge transfer problem cleanly. Flag this when evaluating extension quality.
+
 ## Reference Files
 
 Consult these only when you need specific details:

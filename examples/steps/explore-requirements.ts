@@ -2,8 +2,7 @@
 // Stage 1 of requirements-gathering: Broad open-ended discovery to map the
 // problem space, understand vision, context, goals, and stakeholders.
 
-import { retry, user } from "../../extensions/captain/gates/index.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import { full, retry, user } from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 
 const prompt = `

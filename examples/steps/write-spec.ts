@@ -2,8 +2,12 @@
 // Stage 1 of spec-tdd: Architect analyzes codebase and produces a detailed,
 // testable technical specification from the raw requirement.
 
-import { allOf, llmFast, retry } from "../../extensions/captain/gates/index.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import {
+	allOf,
+	full,
+	llmFast,
+	retry,
+} from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 
 const prompt = `

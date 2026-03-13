@@ -23,8 +23,8 @@
 //         re-shred,validate-units,resolve-dependencies,format-tree,
 //         generate-execution-spec,render-canvas}.ts
 
-import { rank } from "../../extensions/captain/core/merge.js";
-import type { Pool, Runnable } from "../../extensions/captain/types.js";
+import { rank } from "../../extensions/captain/presets.js";
+import type { Parallel, Runnable } from "../../extensions/captain/types.js";
 import { captureAndClarify } from "../steps/capture-and-clarify.js";
 import { decompose } from "../steps/decompose.js";
 import { formatTree } from "../steps/format-tree.js";
@@ -34,12 +34,11 @@ import { resolveDependencies } from "../steps/resolve-dependencies.js";
 import { shredAndScore } from "../steps/shred-and-score.js";
 import { validateUnits } from "../steps/validate-units.js";
 
-// ── Stage 2: Pool of 3 decomposition attempts — rank best ───────────────
+// ── Stage 2: 3 decomposition attempts in parallel — rank best ───────────
 
-const decomposePool: Pool = {
-	kind: "pool",
-	step: decompose,
-	count: 3,
+const decomposePool: Parallel = {
+	kind: "parallel",
+	steps: [decompose, decompose, decompose],
 	merge: rank,
 };
 

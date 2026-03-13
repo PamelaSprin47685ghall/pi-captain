@@ -1,23 +1,12 @@
-// ── Captain: Agent Orchestration Pipeline Extension ────────────────────────
-// Composable, type-safe multi-agent pipelines with sequential, parallel, and
-// pool execution patterns, git worktree isolation, gates, and merge strategies.
-//
-// Entry point — wires together state, tools, UI, and commands.
-// See: state.ts | tools/ | ui/ | utils/ | executor.ts | types.ts
+// ── Captain: Pipeline Orchestration Extension ─────────────────────────────
+// Composable multi-agent pipelines with sequential, parallel execution,
+// quality gates, failure handling, and merge strategies.
 
 import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { registerCommands } from "./commands.js";
 import { CaptainState } from "./state.js";
-
-import { registerGenerateTool } from "./tools/generate.js";
-import { registerKillTool } from "./tools/kill.js";
-import { registerListTool } from "./tools/list.js";
-import { registerLoadTool } from "./tools/load.js";
-import { registerRunTool } from "./tools/run.js";
-import { registerStatusTool } from "./tools/status.js";
-import { registerValidateTool } from "./tools/validate.js";
-import { registerCommands } from "./ui/commands.js";
-import { clearWidget, updateWidget } from "./ui/widget.js";
+import { registerTools } from "./tools.js";
 
 const baseDir = (() => {
 	try {
@@ -30,28 +19,18 @@ const baseDir = (() => {
 export default function (pi: ExtensionAPI) {
 	const state = new CaptainState(baseDir);
 
-	// ── Contract File ──────────────────────────────────────────────────────
-	// Write .pi/pipelines/captain.ts so pipeline authors get IDE autocomplete.
+	// Write .pi/pipelines/captain.ts so pipeline authors get IDE autocomplete
 	try {
-		state.ensureCaptainContractFile(process.cwd());
+		state.ensureContractFile(process.cwd());
 	} catch {
-		/* best-effort — don't crash if .pi/ isn't writable */
+		/* best-effort */
 	}
 
-	// ── Bundled Prompts ────────────────────────────────────────────────────
+	// Bundled prompt for the orchestrate skill
 	pi.on("resources_discover", () => ({
 		promptPaths: [join(baseDir, "prompts", "orchestrate.md")],
 	}));
 
-	// ── Register Tools ─────────────────────────────────────────────────────
-	registerGenerateTool(pi, state);
-	registerKillTool(pi, state);
-	registerLoadTool(pi, state);
-	registerRunTool(pi, state, updateWidget, clearWidget);
-	registerStatusTool(pi, state);
-	registerListTool(pi, state);
-	registerValidateTool(pi, state);
-
-	// ── Register Slash Commands ────────────────────────────────────────────
+	registerTools(pi, state);
 	registerCommands(pi, state);
 }

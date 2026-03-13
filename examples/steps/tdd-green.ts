@@ -2,8 +2,7 @@
 // Stage 3a of spec-tdd: Builder writes the minimal implementation to make
 // all failing tests pass. Does NOT modify test files.
 
-import { bunTest, retry } from "../../extensions/captain/gates/index.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import { bunTest, full, retry } from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 
 const prompt = `

@@ -2,7 +2,7 @@
 // Stage 1 of shredder: Transform a raw requirement into a structured,
 // unambiguous specification with inputs, outputs, acceptance criteria.
 
-import { retry } from "../../extensions/captain/gates/index.js";
+import { retry } from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 
 const prompt = `

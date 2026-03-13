@@ -3,8 +3,7 @@
 // all gathered information for contradictions, unstated assumptions, missing
 // perspectives, and completeness.
 
-import { retry, user } from "../../extensions/captain/gates/index.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import { full, retry, user } from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 
 const prompt = `

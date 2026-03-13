@@ -3,8 +3,7 @@
 // and open questions to eliminate ambiguity, lock down constraints, and
 // uncover edge cases.
 
-import { retry, user } from "../../extensions/captain/gates/index.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import { full, retry, user } from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 
 const prompt = `

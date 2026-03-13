@@ -3,8 +3,7 @@
 // independently shippable user stories using business rule splitting and
 // SPIDR patterns. Each story cuts through all layers (no horizontal slices).
 
-import { retry } from "../../extensions/captain/gates/index.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import { full, retry } from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 
 const prompt = `

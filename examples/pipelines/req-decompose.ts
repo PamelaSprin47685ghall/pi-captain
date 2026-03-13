@@ -33,8 +33,8 @@
 // Steps:  extensions/captain/steps/{ears-structure,slice-stories,bdd-scenarios,
 //         tdd-task-list,validate-atomicity,format-backlog}.ts
 
-import { rank } from "../../extensions/captain/core/merge.js";
-import type { Pool, Runnable } from "../../extensions/captain/types.js";
+import { rank } from "../../extensions/captain/presets.js";
+import type { Parallel, Runnable } from "../../extensions/captain/types.js";
 import { bddScenarios } from "../steps/bdd-scenarios.js";
 import { earsStructure } from "../steps/ears-structure.js";
 import { formatBacklog } from "../steps/format-backlog.js";
@@ -42,14 +42,13 @@ import { sliceStories } from "../steps/slice-stories.js";
 import { tddTaskList } from "../steps/tdd-task-list.js";
 import { validateAtomicity } from "../steps/validate-atomicity.js";
 
-// ── Stage 2: Pool of 3 story-slicing attempts — rank best ───────────────
+// ── Stage 2: 3 story-slicing attempts in parallel — rank best ───────────
 // Business rule splitting benefits from multiple decomposition attempts;
 // the ranked merge picks the most granular / INVEST-compliant result.
 
-const slicePool: Pool = {
-	kind: "pool",
-	step: sliceStories,
-	count: 3,
+const slicePool: Parallel = {
+	kind: "parallel",
+	steps: [sliceStories, sliceStories, sliceStories],
 	merge: rank,
 };
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import type { FsPort } from "./core/ports.js";
+import type { FsPort } from "./state.js";
 import { CaptainState } from "./state.js";
 
 // ── Fake FsPort ───────────────────────────────────────────────────────────

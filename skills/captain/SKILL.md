@@ -3,7 +3,7 @@ name: captain
 description: >
   Orchestrate multi-step workflows using Captain pipelines. Each step declares
   its own model and tools inline — no separate agent setup needed.
-  Supports sequential, parallel, and pool composition with quality gates,
+  Supports sequential and parallel composition with quality gates,
   failure handling, and merge strategies. Use when building research, code
   generation, review, or any multi-step LLM workflow.
 ---
@@ -12,7 +12,7 @@ description: >
 
 ## Overview
 
-Captain turns pi into a pipeline orchestration platform. Define typed pipeline specs with sequential, parallel, and pool composition patterns, then execute them with automatic git worktree isolation, gate validation, failure handling, and merge strategies.
+Captain turns pi into a pipeline orchestration platform. Define typed pipeline specs with sequential and parallel composition patterns, then execute them with gate validation, failure handling, and merge strategies.
 
 ## When to Use
 
@@ -113,31 +113,15 @@ export const reviewCode: Step = { kind: "step", label: "Review", prompt: "…", 
 /captain examples/steps/review-code.ts 'this repo'
 ```
 
-The loader checks for a `pipeline` export first, then falls back to scanning all named exports for any object with `kind` in `"step" | "sequential" | "pool" | "parallel"`.
+The loader checks for a `pipeline` export first, then falls back to scanning all named exports for any object with `kind` in `"step" | "sequential" | "parallel"`.
 
 If you need finer control after a pipeline is already loaded, you can still call `captain_run` directly.
 
 ## Import Aliases and Barrel Exports
 
-Captain supports two convenient ways to import presets and types for better IDE support:
+All presets and types are available from a single barrel file. Captain uses a **flat module structure** — everything lives in the captain extension directory.
 
-### Path Aliases
-
-Use either alias syntax to reference captain extension files:
-
-```ts
-// Standard alias with angle brackets (original syntax)
-import { retry } from "<captain>/gates/on-fail.js";
-
-// Convenience alias without angle brackets (new syntax)
-import { retry } from "captain/gates/on-fail.js";
-```
-
-Both aliases resolve to the same absolute path of the captain extension directory.
-
-### Barrel Imports
-
-Import multiple presets from a single file for better autocomplete and fewer import lines:
+### Barrel Imports (recommended)
 
 ```ts
 // Import all commonly used presets from one barrel file
@@ -152,11 +136,11 @@ import {
 > so `"./captain"` always resolves correctly regardless of machine or user.
 
 The barrel export includes:
-- **Gate presets**: `command`, `file`, `regexCI`, `allOf`, `user`, `bunTest`
+- **Gate presets**: `command`, `file`, `regexCI`, `allOf`, `user`, `bunTest`, `llmFast`
 - **OnFail presets**: `retry`, `retryWithDelay`, `fallback`, `skip`, `warn`
 - **Transform presets**: `full`, `extract`, `summarize`
 - **Merge presets**: `concat`, `awaitAll`, `firstPass`, `vote`, `rank`
-- **Core types**: `Runnable`, `Step`, `Sequential`, `Pool`, `Parallel`, `Gate`, `OnFail`, `Transform`, `MergeFn`, `ModelId`
+- **Core types**: `Runnable`, `Step`, `Sequential`, `Parallel`, `Gate`, `OnFail`, `Transform`, `MergeFn`, `ModelId`
 
 ## Step Fields
 
@@ -212,7 +196,7 @@ gate: async ({ ctx }) => {
 }
 ```
 
-### Gate presets (import from `gates/presets.js`)
+### Gate presets (import from `"./captain"`)
 
 | Preset | Behavior |
 |--------|----------|
@@ -228,7 +212,7 @@ gate: async ({ ctx }) => {
 
 An `OnFail` is: `(ctx: OnFailCtx) => OnFailResult | Promise<OnFailResult>`
 
-### OnFail presets (import from `gates/on-fail.js`)
+### OnFail presets (import from `"./captain"`)
 
 | Preset | Behavior |
 |--------|----------|
@@ -264,10 +248,10 @@ export const pipeline: Runnable = {
 };
 ```
 
-### Parallel — different steps concurrently (each in own git worktree)
+### Parallel — different steps concurrently
 
 ```ts
-import { concat } from "captain/merge.js"; // using convenience alias
+import { concat } from "./captain.ts";
 
 export const pipeline: Runnable = {
   kind: "parallel",
@@ -276,23 +260,25 @@ export const pipeline: Runnable = {
 };
 ```
 
-### Pool — same step × N (each in own git worktree)
+### Parallel with repeated steps — same step × N (diverse approaches)
+
+Run the same step multiple times in parallel and pick the best result with `vote` or `rank`.
+This replaces the old `pool` kind (removed — use `parallel` with repeated steps instead).
 
 ```ts
 import { vote } from "./captain.ts";
 
 export const pipeline: Runnable = {
-  kind: "pool",
-  step: solveStep,
-  count: 3,
-  merge: vote,
+  kind: "parallel",
+  steps: [solveStep, solveStep, solveStep],   // repeat the same step
+  merge: vote,                                 // LLM picks the best answer
 };
 ```
 
 ## Merge Functions
 
 `merge` is a plain function `(outputs: string[], ctx) => string | Promise<string>`.
-Import named presets from `merge.js`:
+Import named presets from the barrel:
 
 ```ts
 import { concat, awaitAll, firstPass, vote, rank } from "./captain.ts";

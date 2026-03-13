@@ -8,7 +8,7 @@
 // Import the Gate type from the captain public API:
 //   import type { Gate } from "<path-to>/extensions/captain/index.public.js";
 
-import type { Gate } from "../extensions/captain/index.public.js";
+import type { Gate } from "../extensions/captain/api.js";
 
 // ── 1. Word-count threshold ───────────────────────────────────────────────
 // Ensure the output is substantial enough before moving on.

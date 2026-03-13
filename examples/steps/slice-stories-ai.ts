@@ -3,8 +3,7 @@
 // Extends slice-stories with an upfront codebase scan so every story is
 // grounded in real file paths, existing types, and modules.
 
-import { retry } from "../../extensions/captain/gates/index.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import { full, retry } from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 
 const prompt = `

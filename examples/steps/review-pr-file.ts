@@ -4,8 +4,7 @@
 // code quality, style, and suggests inline comments. Run in a pool so
 // all files are reviewed in parallel — results merged via concat.
 
-import { retry } from "../../extensions/captain/gates/index.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import { full, retry } from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 
 const prompt = `

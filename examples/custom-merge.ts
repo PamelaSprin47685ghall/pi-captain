@@ -9,8 +9,7 @@
 //   import type { MergeFn } from "<path-to>/extensions/captain/index.public.js";
 //   import type { MergeCtx } from "<path-to>/extensions/captain/merge.js";
 
-import type { MergeCtx } from "../extensions/captain/core/merge.js";
-import type { MergeFn } from "../extensions/captain/index.public.js";
+import type { MergeCtx, MergeFn } from "../extensions/captain/api.js";
 
 // ── 1. Deduplicated union ─────────────────────────────────────────────────
 // Split every branch on newlines, deduplicate, rejoin — great for lists of

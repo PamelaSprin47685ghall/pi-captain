@@ -8,7 +8,7 @@
 // Import the Transform type from the captain public API:
 //   import type { Transform } from "<path-to>/extensions/captain/index.public.js";
 
-import type { Transform } from "../extensions/captain/index.public.js";
+import type { Transform } from "../extensions/captain/api.js";
 
 // ── 1. Strip markdown fences ──────────────────────────────────────────────
 // Useful when a step returns a fenced code block and the next step needs raw code.

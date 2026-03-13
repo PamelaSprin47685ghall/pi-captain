@@ -3,8 +3,7 @@
 // their diffs from the GitHub REST API, then emit a structured file list
 // with per-file stats (additions, deletions, patch content).
 
-import { retry } from "../../extensions/captain/gates/index.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import { full, retry } from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 
 const prompt = `

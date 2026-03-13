@@ -6,10 +6,10 @@
 import {
 	allOf,
 	bunTest,
+	full,
 	retry,
 	user,
-} from "../../extensions/captain/gates/index.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+} from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 
 const prompt = `

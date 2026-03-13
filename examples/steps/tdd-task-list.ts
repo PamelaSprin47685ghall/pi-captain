@@ -3,8 +3,7 @@
 // to each BDD scenario. Expand each scenario into a list of unit-level test
 // scenarios → each maps to 1 failing test → 1 function → 1 commit.
 
-import { retry } from "../../extensions/captain/gates/index.js";
-import { full } from "../../extensions/captain/transforms/presets.js";
+import { full, retry } from "../../extensions/captain/presets.js";
 import type { Step } from "../../extensions/captain/types.js";
 
 const prompt = `
