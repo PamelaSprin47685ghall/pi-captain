@@ -40,7 +40,8 @@
 			"./extensions/safety-path-protection",
 			"./extensions/native-web-search",
 			"./extensions/zellij-tab-namer",
-			"./extensions/handoff"
+			"./extensions/handoff",
+			"./extensions/claude-modes"
 		],
 		"skills": [
 			"./skills"
@@ -58,7 +59,8 @@
 		"extensions/safety-network-exfiltration",
 		"extensions/safety-path-protection",
 		"extensions/native-web-search",
-		"extensions/zellij-tab-namer"
+		"extensions/zellij-tab-namer",
+		"extensions/claude-modes"
 	],
 	"dependencies": {
 		"neverthrow": "^8.2.0"

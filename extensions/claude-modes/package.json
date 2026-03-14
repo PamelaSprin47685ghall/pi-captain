@@ -1,0 +1,18 @@
+{
+	"name": "pi-claude-modes",
+	"version": "0.1.0",
+	"description": "Switch Claude between code, plan (read-only exploration), and review (read-only code review) modes. Restricts tools, blocks destructive bash commands, and injects per-mode system prompts.",
+	"keywords": [
+		"pi-package"
+	],
+	"license": "MIT",
+	"pi": {
+		"extensions": [
+			"."
+		]
+	},
+	"peerDependencies": {
+		"@mariozechner/pi-coding-agent": "*",
+		"@mariozechner/pi-tui": "*"
+	}
+}

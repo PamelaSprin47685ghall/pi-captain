@@ -1,0 +1,28 @@
+{
+	"triggers": [
+		"pi ui extension",
+		"custom footer",
+		"setFooter",
+		"setStatus",
+		"setWidget",
+		"ctx.ui.custom",
+		"tui component",
+		"pi tui",
+		"footer layout",
+		"context bar",
+		"token stats footer",
+		"status bar extension",
+		"widget above editor",
+		"BorderedLoader",
+		"CancellableLoader",
+		"theme.fg",
+		"theme colors pi",
+		"visibleWidth truncateToWidth",
+		"reactive rerender",
+		"tui.requestRender",
+		"pi overlay",
+		"interactive dialog pi",
+		"pi extension ui",
+		"improve pi ui"
+	]
+}
