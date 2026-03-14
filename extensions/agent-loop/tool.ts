@@ -9,16 +9,17 @@ import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { buildPrompt, type LoopState } from "./state.js";
 
-export function handleLoopControlTool(
-	params: { status: "next" | "done"; summary: string; reason?: string },
-	state: LoopState,
-	pi: ExtensionAPI,
-	_ctx: ExtensionContext,
-): {
+export function handleLoopControlTool(opts: {
+	params: { status: "next" | "done"; summary: string; reason?: string };
+	state: LoopState;
+	pi: ExtensionAPI;
+	ctx: ExtensionContext;
+}): {
 	content: { type: "text"; text: string }[];
 	details: LoopState | undefined;
 	newState: LoopState;
 } {
+	const { params, state, pi } = opts;
 	if (!state.active) {
 		return {
 			content: [
@@ -138,6 +139,7 @@ export function renderLoopControlCall(
 	);
 }
 
+// biome-ignore lint/complexity/useMaxParams: implements AgentTool.renderResult — signature fixed by pi SDK
 export function renderLoopControlResult(
 	result: { details?: LoopState },
 	_opts: unknown,

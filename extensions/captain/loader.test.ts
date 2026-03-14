@@ -88,7 +88,11 @@ describe("loadTsPipelineFile — direct path", () => {
 		await writeFile(path, SEQUENTIAL_SRC, "utf8");
 
 		const pipelines: Record<string, { spec: Runnable }> = {};
-		const result = await loadTsPipelineFile(path, "", pipelines);
+		const result = await loadTsPipelineFile({
+			filePath: path,
+			captainDir: "",
+			pipelines,
+		});
 
 		expect(result.spec.kind).toBe("sequential");
 		expect(result.source).toBe(path);
@@ -107,7 +111,11 @@ describe("loadTsPipelineFile — direct path", () => {
 		await writeFile(path, STEP_SRC, "utf8");
 
 		const pipelines: Record<string, { spec: Runnable }> = {};
-		const result = await loadTsPipelineFile(path, "", pipelines);
+		const result = await loadTsPipelineFile({
+			filePath: path,
+			captainDir: "",
+			pipelines,
+		});
 
 		expect(result.spec.kind).toBe("step");
 		if (result.spec.kind === "step") {
@@ -122,7 +130,11 @@ describe("loadTsPipelineFile — direct path", () => {
 		await writeFile(path, NAMED_EXPORT_SRC, "utf8");
 
 		const pipelines: Record<string, { spec: Runnable }> = {};
-		const result = await loadTsPipelineFile(path, "", pipelines);
+		const result = await loadTsPipelineFile({
+			filePath: path,
+			captainDir: "",
+			pipelines,
+		});
 
 		expect(result.spec.kind).toBe("step");
 		if (result.spec.kind === "step") {
@@ -136,9 +148,9 @@ describe("loadTsPipelineFile — direct path", () => {
 		await writeFile(path, INVALID_SRC, "utf8");
 
 		const pipelines: Record<string, { spec: Runnable }> = {};
-		await expect(loadTsPipelineFile(path, "", pipelines)).rejects.toThrow(
-			/Invalid pipeline file/,
-		);
+		await expect(
+			loadTsPipelineFile({ filePath: path, captainDir: "", pipelines }),
+		).rejects.toThrow(/Invalid pipeline file/);
 	});
 
 	test("error message includes the file path", async () => {
@@ -148,7 +160,11 @@ describe("loadTsPipelineFile — direct path", () => {
 
 		let message = "";
 		try {
-			await loadTsPipelineFile(path, "", {});
+			await loadTsPipelineFile({
+				filePath: path,
+				captainDir: "",
+				pipelines: {},
+			});
 		} catch (e) {
 			message = (e as Error).message;
 		}
@@ -172,7 +188,7 @@ describe("loadTsPipelineFile — direct path", () => {
 			"other-pipeline": { spec: existing },
 		};
 
-		await loadTsPipelineFile(path, "", pipelines);
+		await loadTsPipelineFile({ filePath: path, captainDir: "", pipelines });
 
 		// The pre-existing entry must still be there
 		expect(pipelines["other-pipeline"]).toBeDefined();
@@ -188,7 +204,11 @@ describe("loadTsPipelineFile — direct path", () => {
 		await writeFile(jsPath, jsSrc, "utf8");
 
 		const pipelines: Record<string, { spec: Runnable }> = {};
-		const result = await loadTsPipelineFile(jsPath, "", pipelines);
+		const result = await loadTsPipelineFile({
+			filePath: jsPath,
+			captainDir: "",
+			pipelines,
+		});
 
 		expect(result.name.endsWith(".js")).toBe(false);
 		expect(result.name.endsWith(".ts")).toBe(false);
@@ -219,7 +239,11 @@ export const pipeline = {
 		await writeFile(path, aliasSrc, "utf8");
 
 		const pipelines: Record<string, { spec: Runnable }> = {};
-		const result = await loadTsPipelineFile(path, CAPTAIN_DIR, pipelines);
+		const result = await loadTsPipelineFile({
+			filePath: path,
+			captainDir: CAPTAIN_DIR,
+			pipelines,
+		});
 
 		expect(result.spec.kind).toBe("step");
 		if (result.spec.kind === "step") {
@@ -247,7 +271,11 @@ export const pipeline = {
 		await writeFile(path, aliasSrc, "utf8");
 
 		const pipelines: Record<string, { spec: Runnable }> = {};
-		const result = await loadTsPipelineFile(path, CAPTAIN_DIR, pipelines);
+		const result = await loadTsPipelineFile({
+			filePath: path,
+			captainDir: CAPTAIN_DIR,
+			pipelines,
+		});
 
 		expect(result.spec.kind).toBe("step");
 		if (result.spec.kind === "step") {
@@ -275,7 +303,11 @@ export const pipeline = {
 		await writeFile(path, aliasSrc, "utf8");
 
 		await expect(
-			loadTsPipelineFile(path, CAPTAIN_DIR, {}),
+			loadTsPipelineFile({
+				filePath: path,
+				captainDir: CAPTAIN_DIR,
+				pipelines: {},
+			}),
 		).resolves.toBeDefined();
 	});
 });

@@ -166,11 +166,12 @@ export const generateTabLabel = async (
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastLabel = "";
 
-export const scheduleRename = (
-	entries: SessionEntry[],
-	ctx: ExtensionContext,
-	delay = 1500,
-): void => {
+export const scheduleRename = (opts: {
+	entries: SessionEntry[];
+	ctx: ExtensionContext;
+	delay?: number;
+}): void => {
+	const { entries, ctx, delay = 1500 } = opts;
 	if (debounceTimer) {
 		clearTimeout(debounceTimer);
 	}

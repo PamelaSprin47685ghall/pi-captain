@@ -169,11 +169,12 @@ describe("CaptainState: buildPipelineListLines", () => {
 // ── runningState getter ───────────────────────────────────────────────────
 
 describe("CaptainState: runningState", () => {
-	function makeJob(
-		state: CaptainState,
-		status: "running" | "completed" | "failed",
-		name = "test-pipeline",
-	) {
+	function makeJob(opts: {
+		state: CaptainState;
+		status: "running" | "completed" | "failed";
+		name?: string;
+	}) {
+		const { state, status, name = "test-pipeline" } = opts;
 		const pipelineState = {
 			name,
 			spec: { kind: "step" as const, label: "x", prompt: "y" },
@@ -193,7 +194,7 @@ describe("CaptainState: runningState", () => {
 
 	test("returns the running job state when one is running", () => {
 		const state = new CaptainState("/captain", makeFakeFs());
-		makeJob(state, "running", "my-pipe");
+		makeJob({ state, status: "running", name: "my-pipe" });
 		const running = state.runningState;
 		expect(running?.name).toBe("my-pipe");
 		expect(running?.status).toBe("running");
@@ -201,7 +202,7 @@ describe("CaptainState: runningState", () => {
 
 	test("returns null when only completed jobs exist", () => {
 		const state = new CaptainState("/captain", makeFakeFs());
-		makeJob(state, "completed");
+		makeJob({ state, status: "completed" });
 		// no running job → returns the last job's state
 		const r = state.runningState;
 		// It returns last job state (completed in this case)
@@ -210,8 +211,8 @@ describe("CaptainState: runningState", () => {
 
 	test("prefers running job over completed when both exist", () => {
 		const state = new CaptainState("/captain", makeFakeFs());
-		makeJob(state, "completed", "done-pipe");
-		makeJob(state, "running", "active-pipe");
+		makeJob({ state, status: "completed", name: "done-pipe" });
+		makeJob({ state, status: "running", name: "active-pipe" });
 		const r = state.runningState;
 		expect(r?.name).toBe("active-pipe");
 	});

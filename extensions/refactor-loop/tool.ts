@@ -7,18 +7,19 @@ import { commitAndPush } from "./git-helper.js";
 import type { RefactorPass, RefactorState } from "./state.js";
 import { updateWidget } from "./widget.js";
 
-async function executeRefactorPass(
-	pi: ExtensionAPI,
-	getState: () => RefactorState,
-	setState: (state: RefactorState) => void,
+async function executeRefactorPass(opts: {
+	pi: ExtensionAPI;
+	getState: () => RefactorState;
+	setState: (state: RefactorState) => void;
 	params: {
 		change: string;
 		reason: string;
 		remaining: string;
 		done: boolean;
-	},
-	ctx: import("@mariozechner/pi-coding-agent").ExtensionContext,
-) {
+	};
+	ctx: import("@mariozechner/pi-coding-agent").ExtensionContext;
+}) {
+	const { pi, getState, setState, params, ctx } = opts;
 	const state = getState();
 	if (!state.active) {
 		return {
@@ -53,16 +54,16 @@ async function executeRefactorPass(
 	let responseText: string;
 
 	if (isDone) {
-		responseText = await handlePipelineComplete(
+		responseText = await handlePipelineComplete({
 			pi,
 			state,
 			setState,
 			passNum,
 			hitMax,
 			ctx,
-		);
+		});
 	} else {
-		responseText = buildContinueMessage(state, passNum, params);
+		responseText = buildContinueMessage({ state, passNum, params });
 	}
 
 	return {
@@ -71,14 +72,15 @@ async function executeRefactorPass(
 	};
 }
 
-async function handlePipelineComplete(
-	pi: ExtensionAPI,
-	state: RefactorState,
-	setState: (state: RefactorState) => void,
-	passNum: number,
-	hitMax: boolean,
-	ctx: import("@mariozechner/pi-coding-agent").ExtensionContext,
-): Promise<string> {
+async function handlePipelineComplete(opts: {
+	pi: ExtensionAPI;
+	state: RefactorState;
+	setState: (state: RefactorState) => void;
+	passNum: number;
+	hitMax: boolean;
+	ctx: import("@mariozechner/pi-coding-agent").ExtensionContext;
+}): Promise<string> {
+	const { pi, state, setState, passNum, hitMax, ctx } = opts;
 	// Pipeline complete
 	state.active = false;
 	setState(state);
@@ -94,7 +96,7 @@ async function handlePipelineComplete(
 	// Auto commit+push if enabled
 	if (state.autoCommit && ctx) {
 		updateWidget(ctx, state); // Show "committing" state
-		const gitResult = await commitAndPush(pi, state, ctx as never);
+		const gitResult = await commitAndPush({ pi, state });
 		responseText += `\n\n---\n\n## Git\n${gitResult}`;
 	}
 
@@ -106,11 +108,12 @@ async function handlePipelineComplete(
 	return responseText;
 }
 
-function buildContinueMessage(
-	state: RefactorState,
-	passNum: number,
-	params: { change: string; remaining: string },
-): string {
+function buildContinueMessage(opts: {
+	state: RefactorState;
+	passNum: number;
+	params: { change: string; remaining: string };
+}): string {
+	const { state, passNum, params } = opts;
 	// Continue — prompt the next pass
 	const testReminder = state.testCommand
 		? `\n\n⚠️ IMPORTANT: After making your change, run \`${state.testCommand}\` and confirm all tests pass BEFORE calling refactor_pass.`
@@ -125,11 +128,12 @@ function buildContinueMessage(
 	);
 }
 
-export function registerRefactorTool(
-	pi: ExtensionAPI,
-	getState: () => RefactorState,
-	setState: (state: RefactorState) => void,
-) {
+export function registerRefactorTool(opts: {
+	pi: ExtensionAPI;
+	getState: () => RefactorState;
+	setState: (state: RefactorState) => void;
+}) {
+	const { pi, getState, setState } = opts;
 	pi.registerTool({
 		name: "refactor_pass",
 		label: "Refactor Pass",
@@ -150,8 +154,9 @@ export function registerRefactorTool(
 			}),
 		}),
 
+		// biome-ignore lint/complexity/useMaxParams: implements AgentTool.execute — signature fixed by pi SDK
 		async execute(_id, params, _signal, _onUpdate, ctx) {
-			return await executeRefactorPass(pi, getState, setState, params, ctx);
+			return await executeRefactorPass({ pi, getState, setState, params, ctx });
 		},
 
 		// Custom rendering
@@ -164,6 +169,7 @@ export function registerRefactorTool(
 				0,
 			);
 		},
+		// biome-ignore lint/complexity/useMaxParams: implements AgentTool.renderResult — signature fixed by pi SDK
 		renderResult(result, { expanded }, theme) {
 			const d = result.details as RefactorState | undefined;
 			if (!d) return new Text("", 0, 0);

@@ -30,13 +30,14 @@ function text(t: string): TextContent {
 	return { type: "text" as const, text: t };
 }
 
-export function buildCompletionText(
-	name: string,
-	output: string,
-	results: StepResult[],
-	startTime?: number,
-	endTime?: number,
-): string {
+export function buildCompletionText(opts: {
+	name: string;
+	output: string;
+	results: StepResult[];
+	startTime?: number;
+	endTime?: number;
+}): string {
+	const { name, output, results, startTime, endTime } = opts;
 	const end = endTime ?? Date.now();
 	const elapsed = ((end - (startTime ?? end)) / 1000).toFixed(1);
 	const passed = results.filter((r) => r.status === "passed").length;
@@ -96,16 +97,17 @@ function mergeSignals(
 	return AbortSignal.any([a, b]);
 }
 
-function buildRunCtx(
-	pi: ExtensionAPI,
-	ctx: ExtensionContext,
-	pipelineState: PipelineState,
-	resolvedName: string,
-	apiKey: string,
-	signal: AbortSignal | undefined,
-): RunCtx {
+function buildRunCtx(opts: {
+	pi: ExtensionAPI;
+	ctx: ExtensionContext;
+	pipelineState: PipelineState;
+	resolvedName: string;
+	apiKey: string;
+	signal: AbortSignal | undefined;
+}): RunCtx {
+	const { pi, ctx, pipelineState, resolvedName, apiKey, signal } = opts;
 	return {
-		exec: (cmd, args, opts) => pi.exec(cmd, [...args], opts),
+		exec: ({ cmd, args, signal }) => pi.exec(cmd, [...args], { signal }),
 		model: ctx.model as NonNullable<typeof ctx.model>,
 		modelRegistry: ctx.modelRegistry,
 		apiKey,
@@ -139,15 +141,16 @@ function buildRunCtx(
 	};
 }
 
-async function runPipeline(
-	pi: ExtensionAPI,
-	state: CaptainState,
-	resolvedName: string,
-	input: string | undefined,
-	toolSignal: AbortSignal | undefined,
-	ctx: ExtensionContext,
-	background: boolean,
-): Promise<{ content: TextContent[]; details: undefined }> {
+async function runPipeline(opts: {
+	pi: ExtensionAPI;
+	state: CaptainState;
+	resolvedName: string;
+	input: string | undefined;
+	toolSignal: AbortSignal | undefined;
+	ctx: ExtensionContext;
+	background: boolean;
+}): Promise<{ content: TextContent[]; details: undefined }> {
+	const { pi, state, resolvedName, input, toolSignal, ctx, background } = opts;
 	const pipeline = state.pipelines[resolvedName];
 	if (!pipeline) {
 		return {
@@ -184,15 +187,19 @@ async function runPipeline(
 	updateWidget(ctx, pipelineState);
 
 	const inputStr = input ?? "";
-	const runCtx = buildRunCtx(
+	const runCtx = buildRunCtx({
 		pi,
 		ctx,
 		pipelineState,
 		resolvedName,
 		apiKey,
 		signal,
-	);
-	const runPromise = execute(pipeline.spec, inputStr, inputStr, runCtx);
+	});
+	const runPromise = execute(pipeline.spec, {
+		input: inputStr,
+		original: inputStr,
+		ctx: runCtx,
+	});
 
 	if (background) {
 		runPromise
@@ -249,13 +256,13 @@ async function runPipeline(
 		return {
 			content: [
 				text(
-					buildCompletionText(
-						resolvedName,
+					buildCompletionText({
+						name: resolvedName,
 						output,
 						results,
-						pipelineState.startTime,
-						pipelineState.endTime,
-					),
+						startTime: pipelineState.startTime,
+						endTime: pipelineState.endTime,
+					}),
 				),
 			],
 			details: undefined,
@@ -305,6 +312,7 @@ export function registerTools(pi: ExtensionAPI, state: CaptainState): void {
 		}),
 
 		// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: pipeline run handler covers many cases by design
+		// biome-ignore lint/complexity/useMaxParams: implements AgentTool.execute — signature fixed by pi SDK
 		async execute(_id, params, signal, _onUpdate, ctx) {
 			const resolvedName = params.name ?? "";
 			const background = params.background ?? true;
@@ -355,15 +363,15 @@ export function registerTools(pi: ExtensionAPI, state: CaptainState): void {
 				}
 			}
 
-			return runPipeline(
+			return runPipeline({
 				pi,
 				state,
 				resolvedName,
-				params.input,
-				signal,
+				input: params.input,
+				toolSignal: signal,
 				ctx,
 				background,
-			);
+			});
 		},
 
 		renderCall: (args, theme) => {
@@ -388,6 +396,7 @@ export function registerTools(pi: ExtensionAPI, state: CaptainState): void {
 				0,
 			);
 		},
+		// biome-ignore lint/complexity/useMaxParams: implements AgentTool.renderResult — signature fixed by pi SDK
 		renderResult: (_result, { isPartial }, theme) => {
 			if (isPartial)
 				return new Text(theme.fg("accent", "● Running pipeline..."), 0, 0);
@@ -502,6 +511,7 @@ export function registerTools(pi: ExtensionAPI, state: CaptainState): void {
 		description: "List all defined pipelines with their structure summary.",
 		parameters: Type.Object({}),
 
+		// biome-ignore lint/complexity/useMaxParams: implements AgentTool.execute — signature fixed by pi SDK
 		async execute(_id, _params, _signal, _onUpdate, ctx) {
 			const lines = state.buildPipelineListLines(ctx.cwd);
 			if (lines.length === 0) {
@@ -565,6 +575,7 @@ export function registerTools(pi: ExtensionAPI, state: CaptainState): void {
 			),
 		}),
 
+		// biome-ignore lint/complexity/useMaxParams: implements AgentTool.execute — signature fixed by pi SDK
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			if (params.action === "list") {
 				const presets = state.discoverPresets(ctx.cwd);
@@ -631,6 +642,7 @@ export function registerTools(pi: ExtensionAPI, state: CaptainState): void {
 				0,
 				0,
 			),
+		// biome-ignore lint/complexity/useMaxParams: implements AgentTool.renderResult — signature fixed by pi SDK
 		renderResult: (result, _opts, theme) => {
 			const t =
 				result.content[0] && "text" in result.content[0]
@@ -670,6 +682,7 @@ export function registerTools(pi: ExtensionAPI, state: CaptainState): void {
 			),
 		}),
 
+		// biome-ignore lint/complexity/useMaxParams: implements AgentTool.execute — signature fixed by pi SDK
 		async execute(_id, params, signal, onUpdate, ctx) {
 			onUpdate?.({
 				content: [
@@ -696,12 +709,12 @@ export function registerTools(pi: ExtensionAPI, state: CaptainState): void {
 			}
 
 			try {
-				const generated = await generatePipeline(
-					params.goal,
-					ctx.model,
+				const generated = await generatePipeline({
+					goal: params.goal,
+					model: ctx.model,
 					apiKey,
-					signal ?? undefined,
-				);
+					signal: signal ?? undefined,
+				});
 
 				if (params.dryRun) {
 					return {
@@ -767,6 +780,7 @@ export function registerTools(pi: ExtensionAPI, state: CaptainState): void {
 				0,
 				0,
 			),
+		// biome-ignore lint/complexity/useMaxParams: implements AgentTool.renderResult — signature fixed by pi SDK
 		renderResult: (result, { isPartial }, theme) => {
 			if (isPartial)
 				return new Text(theme.fg("accent", "● Generating..."), 0, 0);
@@ -792,6 +806,7 @@ export function registerTools(pi: ExtensionAPI, state: CaptainState): void {
 			"Validate a pipeline specification. Accepts a loaded pipeline name or raw JSON spec string.",
 		parameters: Type.Object({}),
 
+		// biome-ignore lint/complexity/useMaxParams: implements AgentTool.execute — signature fixed by pi SDK
 		async execute(_id, _params, _signal, _onUpdate, ctx) {
 			const lines = state.buildPipelineListLines(ctx.cwd);
 			const names = Object.keys(state.pipelines);

@@ -55,7 +55,7 @@ function makeFactory(outputs: string[]): SessionFactory {
 	let index = 0;
 	return {
 		createSession: () => Promise.resolve({ __mock: true }),
-		runPrompt: (_session, _prompt) => {
+		runPrompt: (_opts) => {
 			const out = outputs[Math.min(index, outputs.length - 1)];
 			index++;
 			return Promise.resolve({ output: out ?? "", toolCallCount: 0 });
@@ -121,7 +121,11 @@ describe("executeStep", () => {
 	test("returns the session output as the step output", async () => {
 		const { ctx } = mockCtx({ singleOutput: "hello from LLM" });
 		const step = makeStep("s1");
-		const { output, results } = await execute(step, "input", "original", ctx);
+		const { output, results } = await execute(step, {
+			input: "input",
+			original: "original",
+			ctx,
+		});
 		expect(output).toBe("hello from LLM");
 		expect(results).toHaveLength(1);
 		expect(results[0].status).toBe("passed");
@@ -130,13 +134,13 @@ describe("executeStep", () => {
 
 	test("fires onStepStart with the step label", async () => {
 		const { ctx, starts } = mockCtx();
-		await execute(makeStep("alpha"), "in", "orig", ctx);
+		await execute(makeStep("alpha"), { input: "in", original: "orig", ctx });
 		expect(starts).toContain("alpha");
 	});
 
 	test("fires onStepEnd with a StepResult", async () => {
 		const { ctx, ends } = mockCtx({ singleOutput: "out" });
-		await execute(makeStep("beta"), "in", "orig", ctx);
+		await execute(makeStep("beta"), { input: "in", original: "orig", ctx });
 		expect(ends).toHaveLength(1);
 		expect(ends[0].label).toBe("beta");
 		expect(ends[0].output).toBe("out");
@@ -148,7 +152,11 @@ describe("executeStep", () => {
 		const step = makeStep("t", {
 			transform: ({ output }) => `TRANSFORMED:${output}`,
 		});
-		const { output } = await execute(step, "in", "orig", ctx);
+		const { output } = await execute(step, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(output).toBe("TRANSFORMED:raw output");
 	});
 
@@ -156,20 +164,20 @@ describe("executeStep", () => {
 		const prompts: string[] = [];
 		const sf: SessionFactory = {
 			createSession: () => Promise.resolve({}),
-			runPrompt: (_s, prompt) => {
+			runPrompt: ({ prompt }) => {
 				prompts.push(prompt);
 				return Promise.resolve({ output: "ok", toolCallCount: 0 });
 			},
 		};
 		const { ctx } = mockCtx({ overrides: { sessionFactory: sf } });
 		const step = makeStep("p", { prompt: "[$INPUT] vs [$ORIGINAL]" });
-		await execute(step, "THE INPUT", "THE ORIGINAL", ctx);
+		await execute(step, { input: "THE INPUT", original: "THE ORIGINAL", ctx });
 		expect(prompts[0]).toBe("[THE INPUT] vs [THE ORIGINAL]");
 	});
 
 	test("elapsed time is recorded on the StepResult", async () => {
 		const { ctx, ends } = mockCtx();
-		await execute(makeStep("e"), "in", "orig", ctx);
+		await execute(makeStep("e"), { input: "in", original: "orig", ctx });
 		expect(ends[0].elapsed).toBeGreaterThanOrEqual(0);
 	});
 });
@@ -180,7 +188,11 @@ describe("executeStep — gate evaluation", () => {
 	test("gate passes → status passed", async () => {
 		const { ctx, ends } = mockCtx({ singleOutput: "contains keyword" });
 		const step = makeStep("g-pass", { gate: regexCI("keyword") });
-		const { output } = await execute(step, "in", "orig", ctx);
+		const { output } = await execute(step, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(output).toBe("contains keyword");
 		expect(ends[0].status).toBe("passed");
 	});
@@ -188,7 +200,11 @@ describe("executeStep — gate evaluation", () => {
 	test("gate fails + no onFail → status failed, gateResult recorded", async () => {
 		const { ctx, ends } = mockCtx({ singleOutput: "no match here" });
 		const step = makeStep("g-fail", { gate: regexCI("MISSING") });
-		const { output } = await execute(step, "in", "orig", ctx);
+		const { output } = await execute(step, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		// output is the raw LLM text (preserving it for diagnosis)
 		expect(output).toBe("no match here");
 		expect(ends[0].status).toBe("failed");
@@ -199,7 +215,11 @@ describe("executeStep — gate evaluation", () => {
 	test("gate fails + skip → status skipped, output empty", async () => {
 		const { ctx, ends } = mockCtx({ singleOutput: "no match" });
 		const step = makeStep("g-skip", { gate: regexCI("ABSENT"), onFail: skip });
-		const { output } = await execute(step, "in", "orig", ctx);
+		const { output } = await execute(step, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(output).toBe("");
 		expect(ends[0].status).toBe("skipped");
 	});
@@ -207,7 +227,11 @@ describe("executeStep — gate evaluation", () => {
 	test("gate fails + warn → status passed, warning in error field", async () => {
 		const { ctx, ends } = mockCtx({ singleOutput: "no match" });
 		const step = makeStep("g-warn", { gate: regexCI("ABSENT"), onFail: warn });
-		const { output } = await execute(step, "in", "orig", ctx);
+		const { output } = await execute(step, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(output).toBe("no match");
 		expect(ends[0].status).toBe("passed");
 		expect(ends[0].error).toMatch(/Warning/i);
@@ -220,7 +244,7 @@ describe("executeStep — gate evaluation", () => {
 			gate: regexCI("MATCH"),
 			onFail: retry(1),
 		});
-		await execute(step, "in", "orig", ctx);
+		await execute(step, { input: "in", original: "orig", ctx });
 		expect(ends[0].status).toBe("failed");
 	});
 
@@ -231,7 +255,11 @@ describe("executeStep — gate evaluation", () => {
 			gate: regexCI("MATCH"),
 			onFail: retry(2),
 		});
-		const { output } = await execute(step, "in", "orig", ctx);
+		const { output } = await execute(step, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(output).toBe("MATCH found");
 		expect(ends[0].status).toBe("passed");
 	});
@@ -251,7 +279,11 @@ describe("executeStep — fallback onFail (regression: fallback results in onSte
 			onFail: fallback(fallbackStep),
 		});
 
-		const { output } = await execute(step, "in", "orig", ctx);
+		const { output } = await execute(step, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 
 		// The final output should come from the fallback
 		expect(output).toBe("fallback output");
@@ -276,7 +308,11 @@ describe("executeSequential", () => {
 			kind: "sequential",
 			steps: [makeStep("only")],
 		};
-		const { output, results } = await execute(seq, "in", "orig", ctx);
+		const { output, results } = await execute(seq, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(output).toBe("result");
 		expect(results).toHaveLength(1);
 	});
@@ -286,7 +322,7 @@ describe("executeSequential", () => {
 		const prompts: string[] = [];
 		const sf: SessionFactory = {
 			createSession: () => Promise.resolve({}),
-			runPrompt: (_s, prompt) => {
+			runPrompt: ({ prompt }) => {
 				prompts.push(prompt);
 				// Return incrementing outputs
 				const n = prompts.length;
@@ -301,7 +337,7 @@ describe("executeSequential", () => {
 				makeStep("s2", { prompt: "second: $INPUT" }),
 			],
 		};
-		await execute(seq, "initial", "orig", ctx);
+		await execute(seq, { input: "initial", original: "orig", ctx });
 		// s1 gets "initial", s2 gets "step1out"
 		expect(prompts[0]).toBe("first: initial");
 		expect(prompts[1]).toBe("second: step1out");
@@ -311,7 +347,7 @@ describe("executeSequential", () => {
 		const stepRan: string[] = [];
 		const sf: SessionFactory = {
 			createSession: () => Promise.resolve({}),
-			runPrompt: (_s, _prompt, step) => {
+			runPrompt: ({ step }) => {
 				stepRan.push(step.label);
 				return Promise.resolve({ output: "no match", toolCallCount: 0 });
 			},
@@ -325,7 +361,7 @@ describe("executeSequential", () => {
 				makeStep("s2", { prompt: "should not run $INPUT" }),
 			],
 		};
-		await execute(seq, "in", "orig", ctx);
+		await execute(seq, { input: "in", original: "orig", ctx });
 		expect(stepRan).toContain("s1");
 		expect(stepRan).not.toContain("s2");
 	});
@@ -336,7 +372,11 @@ describe("executeSequential", () => {
 			kind: "sequential",
 			steps: [makeStep("a"), makeStep("b")],
 		};
-		const { results } = await execute(seq, "in", "orig", ctx);
+		const { results } = await execute(seq, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(results.map((r) => r.label)).toEqual(["a", "b"]);
 	});
 
@@ -347,7 +387,11 @@ describe("executeSequential", () => {
 			steps: [makeStep("x")],
 			gate: regexCI("PASS"),
 		};
-		const { output, results } = await execute(seq, "in", "orig", ctx);
+		const { output, results } = await execute(seq, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(output).toBe("PASS this");
 		// Gate result is appended as an extra StepResult
 		const gateResult = results.find((r) => r.label.startsWith("[gate]"));
@@ -362,7 +406,11 @@ describe("executeSequential", () => {
 			gate: regexCI("REQUIRED"),
 			onFail: skip,
 		};
-		const { output } = await execute(seq, "in", "orig", ctx);
+		const { output } = await execute(seq, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(output).toBe("");
 	});
 
@@ -373,7 +421,11 @@ describe("executeSequential", () => {
 			steps: [makeStep("x")],
 			transform: ({ output }) => `seq:${output}`,
 		};
-		const { output } = await execute(seq, "in", "orig", ctx);
+		const { output } = await execute(seq, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(output).toBe("seq:raw");
 	});
 });
@@ -394,7 +446,11 @@ describe("executeParallel", () => {
 			steps: [makeStep("p1"), makeStep("p2")],
 			merge: mergeFn,
 		};
-		const { output } = await execute(par, "in", "orig", ctx);
+		const { output } = await execute(par, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(received).toHaveLength(1);
 		// Both branches should appear (order may vary, use sort for stability)
 		expect([...received[0]].sort()).toEqual(["A", "B"]);
@@ -409,7 +465,11 @@ describe("executeParallel", () => {
 			steps: [makeStep("only")],
 			merge: firstPass,
 		};
-		const { output } = await execute(par, "in", "orig", ctx);
+		const { output } = await execute(par, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(output).toBe("solo");
 	});
 
@@ -420,7 +480,11 @@ describe("executeParallel", () => {
 			steps: [makeStep("b1"), makeStep("b2")],
 			merge: concat,
 		};
-		const { output } = await execute(par, "in", "orig", ctx);
+		const { output } = await execute(par, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(output).toContain("Alpha");
 		expect(output).toContain("Beta");
 		expect(output).toContain("Branch");
@@ -433,7 +497,11 @@ describe("executeParallel", () => {
 			steps: [makeStep("r1"), makeStep("r2"), makeStep("r3")],
 			merge: concat,
 		};
-		const { results } = await execute(par, "in", "orig", ctx);
+		const { results } = await execute(par, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		const labels = results.map((r) => r.label);
 		expect(labels).toContain("r1");
 		expect(labels).toContain("r2");
@@ -444,7 +512,7 @@ describe("executeParallel", () => {
 		const seenInputs: string[] = [];
 		const sf: SessionFactory = {
 			createSession: () => Promise.resolve({}),
-			runPrompt: (_s, prompt) => {
+			runPrompt: ({ prompt }) => {
 				seenInputs.push(prompt);
 				return Promise.resolve({ output: "out", toolCallCount: 0 });
 			},
@@ -458,7 +526,7 @@ describe("executeParallel", () => {
 			],
 			merge: firstPass,
 		};
-		await execute(par, "SHARED", "orig", ctx);
+		await execute(par, { input: "SHARED", original: "orig", ctx });
 		// Both branches should see the same input, not each other's output
 		expect(seenInputs.filter((p) => p === "prompt:SHARED")).toHaveLength(2);
 	});
@@ -471,7 +539,11 @@ describe("executeParallel", () => {
 			merge: firstPass,
 			gate: regexCI("PASS"),
 		};
-		const { results } = await execute(par, "in", "orig", ctx);
+		const { results } = await execute(par, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		const gateR = results.find((r) => r.label.startsWith("[gate]"));
 		expect(gateR?.status).toBe("passed");
 	});
@@ -485,7 +557,11 @@ describe("executeParallel", () => {
 			gate: regexCI("REQUIRED"),
 			onFail: warn,
 		};
-		const { output, results } = await execute(par, "in", "orig", ctx);
+		const { output, results } = await execute(par, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(output).toBe("no keyword");
 		const gateR = results.find((r) => r.label.startsWith("[gate]"));
 		expect(gateR?.status).toBe("passed");
@@ -513,7 +589,11 @@ describe("execute — parallel branch failure surfacing", () => {
 			],
 			merge: captureMerge,
 		};
-		const { results } = await execute(par, "in", "orig", ctx);
+		const { results } = await execute(par, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 
 		// The failing branch records a 'failed' StepResult
 		const failedBranchResult = results.find(
@@ -533,7 +613,11 @@ describe("execute — parallel branch failure surfacing", () => {
 			],
 			merge: concat,
 		};
-		const { results } = await execute(par, "in", "orig", ctx);
+		const { results } = await execute(par, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		const failed = results.filter((r) => r.status === "failed");
 		expect(failed.length).toBeGreaterThanOrEqual(2);
 	});
@@ -548,7 +632,11 @@ describe("execute — signal abort", () => {
 
 		const { ctx } = mockCtx({ overrides: { signal: controller.signal } });
 		const step = makeStep("never");
-		const { output, results } = await execute(step, "in", "orig", ctx);
+		const { output, results } = await execute(step, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(output).toBe("(cancelled)");
 		expect(results).toHaveLength(0);
 	});
@@ -562,7 +650,11 @@ describe("execute — signal abort", () => {
 			kind: "sequential",
 			steps: [makeStep("a"), makeStep("b")],
 		};
-		const { output } = await execute(seq, "in", "orig", ctx);
+		const { output } = await execute(seq, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(output).toBe("(cancelled)");
 	});
 });
@@ -576,7 +668,11 @@ describe("execute — unknown runnable kind", () => {
 		const unknown = {
 			kind: "bogus",
 		} as unknown as import("./types.js").Runnable;
-		const { output } = await execute(unknown, "in", "orig", ctx);
+		const { output } = await execute(unknown, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(output).toMatch(/Unknown runnable kind/);
 	});
 });
@@ -590,7 +686,11 @@ describe("execute — gate that throws an exception", () => {
 			throw new Error("gate exploded");
 		};
 		const step = makeStep("throw-gate", { gate: throwingGate as never });
-		const { output } = await execute(step, "in", "orig", ctx);
+		const { output } = await execute(step, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		// The gate threw so it failed; no onFail → status failed
 		expect(output).toBe("output");
 		expect(ends[0].status).toBe("failed");
@@ -604,7 +704,7 @@ describe("execute — gate that throws an exception", () => {
 			throw "string error" as any;
 		};
 		const step = makeStep("throw-str", { gate: throwingGate as never });
-		await execute(step, "in", "orig", ctx);
+		await execute(step, { input: "in", original: "orig", ctx });
 		expect(ends[0].status).toBe("failed");
 		expect(ends[0].error).toContain("string error");
 	});
@@ -623,12 +723,11 @@ describe("execute — sessionFactory runPrompt throws", () => {
 		const { ctx, ends } = mockCtx({
 			overrides: { sessionFactory: throwingSf },
 		});
-		const { output, results } = await execute(
-			makeStep("crashing"),
-			"in",
-			"orig",
+		const { output, results } = await execute(makeStep("crashing"), {
+			input: "in",
+			original: "orig",
 			ctx,
-		);
+		});
 		expect(output).toContain("Error");
 		expect(results[0].status).toBe("failed");
 		expect(ends[0].error).toContain("session blew up");
@@ -647,7 +746,7 @@ describe("execute — MAX_RETRIES (10) exceeded in step retry", () => {
 			gate: regexCI("NEVER_MATCHES"),
 			onFail: retry(11), // preset allows up to 11, but MAX_RETRIES=10 stops it
 		});
-		await execute(step, "in", "orig", ctx);
+		await execute(step, { input: "in", original: "orig", ctx });
 		expect(ends[0].status).toBe("failed");
 		expect(ends[0].error).toContain("Gate failed after");
 	});
@@ -664,7 +763,7 @@ describe("execute — step onFail returns unknown action", () => {
 			gate: regexCI("NEVER"),
 			onFail: weirdOnFail,
 		});
-		await execute(step, "in", "orig", ctx);
+		await execute(step, { input: "in", original: "orig", ctx });
 		expect(ends[0].status).toBe("failed");
 	});
 });
@@ -693,7 +792,11 @@ describe("execute — parallel branch Promise.allSettled rejection", () => {
 				return outputs.join("\n---\n");
 			},
 		};
-		const { results } = await execute(par, "in", "orig", ctx);
+		const { results } = await execute(par, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		// The rejected branch should appear as a failed StepResult added by allSettled handler
 		const failed = results.find(
 			(r) => r.status === "failed" && r.label.startsWith("branch"),
@@ -729,7 +832,11 @@ describe("execute — sequential container gate retry", () => {
 			gate: regexCI("GOOD"),
 			onFail: retry(1),
 		};
-		const { output } = await execute(seq, "in", "orig", ctx);
+		const { output } = await execute(seq, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(output).toContain("GOOD");
 		expect(runCount).toBe(2);
 	});
@@ -742,7 +849,11 @@ describe("execute — sequential container gate retry", () => {
 			gate: regexCI("REQUIRED"),
 			onFail: (_) => ({ action: "fail" as const }),
 		};
-		const { results } = await execute(seq, "in", "orig", ctx);
+		const { results } = await execute(seq, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		const gateResult = results.find((r) => r.label.startsWith("[gate]"));
 		expect(gateResult).toBeDefined();
 		expect(gateResult?.error).toContain("Gate failed");
@@ -759,7 +870,11 @@ describe("execute — sequential container gate retry", () => {
 			gate: regexCI("REQUIRED"),
 			onFail: fallback(fallbackStep),
 		};
-		const { output } = await execute(seq, "in", "orig", ctx);
+		const { output } = await execute(seq, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		expect(output).toContain("fallback output");
 	});
 
@@ -771,7 +886,11 @@ describe("execute — sequential container gate retry", () => {
 			gate: regexCI("REQUIRED"),
 			onFail: () => ({ action: "teleport" as "fail" }),
 		};
-		const { output } = await execute(seq, "in", "orig", ctx);
+		const { output } = await execute(seq, {
+			input: "in",
+			original: "orig",
+			ctx,
+		});
 		// default case: returns the unmodified output
 		expect(output).toBe("no keyword");
 	});

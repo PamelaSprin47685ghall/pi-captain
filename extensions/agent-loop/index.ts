@@ -61,8 +61,9 @@ export default function (pi: ExtensionAPI) {
 	// ── Tool: the LLM calls this to signal progress ─────────────────────
 	pi.registerTool({
 		...getLoopControlToolDefinition(),
+		// biome-ignore lint/complexity/useMaxParams: implements AgentTool.execute — signature fixed by pi SDK
 		async execute(_id, params, _signal, _onUpdate, ctx) {
-			const result = handleLoopControlTool(params, state, pi, ctx);
+			const result = handleLoopControlTool({ params, state, pi, ctx });
 			state = result.newState;
 			updateWidget(state, ctx);
 			return {

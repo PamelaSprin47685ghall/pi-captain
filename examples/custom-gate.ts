@@ -53,7 +53,9 @@ export function urlReachable(extractUrl: (output: string) => string): Gate {
 		const url = extractUrl(output);
 		if (!url) return "Could not extract a URL from output";
 		try {
-			const { code } = (await ctx?.exec("curl", ["-sf", "--head", url], {
+			const { code } = (await ctx?.exec({
+				cmd: "curl",
+				args: ["-sf", "--head", url],
 				signal: ctx?.signal,
 			})) ?? { code: 1 };
 			return code === 0 ? true : `URL not reachable: ${url}`;
@@ -69,19 +71,21 @@ export function urlReachable(extractUrl: (output: string) => string): Gate {
 export const tsCompiles: Gate = async ({ output, ctx }) => {
 	const tmp = `/tmp/captain-gate-check-${Date.now()}.ts`;
 	try {
-		await ctx?.exec("bash", ["-c", `echo ${JSON.stringify(output)} > ${tmp}`], {
+		await ctx?.exec({
+			cmd: "bash",
+			args: ["-c", `echo ${JSON.stringify(output)} > ${tmp}`],
 			signal: ctx?.signal,
 		});
-		const { code, stderr } = (await ctx?.exec(
-			"npx",
-			["tsc", "--noEmit", "--allowJs", "--checkJs", "false", tmp],
-			{ signal: ctx?.signal },
-		)) ?? { code: 1, stderr: "ctx unavailable" };
+		const { code, stderr } = (await ctx?.exec({
+			cmd: "npx",
+			args: ["tsc", "--noEmit", "--allowJs", "--checkJs", "false", tmp],
+			signal: ctx?.signal,
+		})) ?? { code: 1, stderr: "ctx unavailable" };
 		return code === 0 ? true : `TypeScript errors:\n${stderr.slice(0, 400)}`;
 	} finally {
 		// best-effort cleanup
 		await ctx
-			?.exec("rm", ["-f", tmp], { signal: ctx?.signal })
+			?.exec({ cmd: "rm", args: ["-f", tmp], signal: ctx?.signal })
 			.catch((_e: unknown) => undefined);
 	}
 };

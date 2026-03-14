@@ -53,11 +53,11 @@ export function reshapeJson(fn: (parsed: unknown) => unknown): Transform {
 
 export const runPrettier: Transform = async ({ output, ctx }) => {
 	try {
-		const { stdout } = await ctx.exec(
-			"prettier",
-			["--parser", "typescript", "--stdin-filepath", "input.ts"],
-			{ signal: ctx.signal },
-		);
+		const { stdout } = await ctx.exec({
+			cmd: "prettier",
+			args: ["--parser", "typescript", "--stdin-filepath", "input.ts"],
+			signal: ctx.signal,
+		});
 		return stdout || output;
 	} catch {
 		return output; // prettier not installed — pass through unchanged

@@ -33,6 +33,7 @@ export default function webSearchExtension(pi: ExtensionAPI): void {
 			}),
 		}),
 
+		// biome-ignore lint/complexity/useMaxParams: implements AgentTool.execute — signature fixed by pi SDK
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const model = ctx.modelRegistry.find("anthropic", SEARCH_MODEL_ID);
 			if (!model) {
@@ -67,11 +68,11 @@ export default function webSearchExtension(pi: ExtensionAPI): void {
 				details: { query: params.query, status: "searching" },
 			});
 
-			const result: SearchResult = await runWebSearch(
-				params.query,
+			const result: SearchResult = await runWebSearch({
+				query: params.query,
 				apiKey,
 				signal,
-			);
+			});
 
 			if (!result.ok) {
 				const errorResult = result as { ok: false; error: string };
@@ -101,6 +102,7 @@ export default function webSearchExtension(pi: ExtensionAPI): void {
 			);
 		},
 
+		// biome-ignore lint/complexity/useMaxParams: implements AgentTool.renderResult — signature fixed by pi SDK
 		renderResult(result, { expanded, isPartial }, theme) {
 			const details = result.details as
 				| { query?: string; result?: string; error?: string; status?: string }

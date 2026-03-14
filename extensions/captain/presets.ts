@@ -21,7 +21,9 @@ import type {
 export function command(cmd: string): Gate {
 	return async ({ ctx }) => {
 		if (!ctx) return "command gate requires execution context";
-		const { code, stdout, stderr } = await ctx.exec("bash", ["-c", cmd], {
+		const { code, stdout, stderr } = await ctx.exec({
+			cmd: "bash",
+			args: ["-c", cmd],
 			signal: ctx.signal,
 		});
 		if (code !== 0)
@@ -34,7 +36,9 @@ export function command(cmd: string): Gate {
 export function file(path: string): Gate {
 	return async ({ ctx }) => {
 		if (!ctx) return "file gate requires execution context";
-		const { code } = await ctx.exec("test", ["-f", path], {
+		const { code } = await ctx.exec({
+			cmd: "test",
+			args: ["-f", path],
 			signal: ctx.signal,
 		});
 		return code === 0 ? true : `File not found: ${path}`;

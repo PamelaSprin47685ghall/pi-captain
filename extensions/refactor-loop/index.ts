@@ -64,8 +64,8 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_tree", async (_e, ctx) => reconstruct(ctx));
 
 	// Register tool and commands with state access
-	registerRefactorTool(pi, getState, setState);
-	registerCommands(pi, getState, setState);
+	registerRefactorTool({ pi, getState, setState });
+	registerCommands({ pi, getState, setState });
 
 	// ── System prompt injection when pipeline is active ──────────────────────
 

@@ -3,113 +3,32 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
-import { truncateTail } from "@mariozechner/pi-coding-agent";
+import { buildFinalOutput, drawBox, notifyUI, WIDGET_ID } from "./render.js";
 
-const HOME = process.env.HOME ?? "";
-const WIDGET_ID = "terminal";
-const MAX_WIDGET_LINES = 20; // max lines shown live in the widget
-const MAX_OUTPUT_LINES = 200;
-const MAX_OUTPUT_BYTES = 20 * 1024;
-
-function shortCwd(cwd: string): string {
-	return HOME ? cwd.replace(HOME, "~") : cwd;
-}
-
-function drawBox(
-	cmd: string,
-	cwd: string,
-	lines: string[],
-	status: "running" | "ok" | "error",
-	code?: number,
-): string[] {
-	const icon =
-		status === "running" ? "⟳" : status === "ok" ? "✓" : `✗  exit ${code}`;
-
-	const headerText = `❯ ${cmd}`;
-	const cwdText = `  ${shortCwd(cwd)}`;
-	const footerText = icon;
-	const allTexts = [headerText, cwdText, ...lines, footerText];
-	const width = Math.min(Math.max(...allTexts.map((l) => l.length)) + 2, 100);
-
-	const pad = (s: string) => s + " ".repeat(Math.max(0, width - s.length - 2));
-	const top = `┌${"─".repeat(width)}┐`;
-	const sep = `├${"─".repeat(width)}┤`;
-	const bottom = `└${"─".repeat(width)}┘`;
-	const row = (s: string) => `│ ${pad(s)} │`;
-
-	const result = [top, row(headerText), row(cwdText)];
-
-	if (lines.length > 0) {
-		result.push(sep);
-		for (const line of lines) result.push(row(line));
-	}
-
-	result.push(sep, row(footerText), bottom);
-	return result;
-}
-
-function buildFinalOutput(raw: string): string {
-	const {
-		content,
-		truncated,
-		totalLines,
-		outputLines: shown,
-	} = truncateTail(raw, {
-		maxLines: MAX_OUTPUT_LINES,
-		maxBytes: MAX_OUTPUT_BYTES,
-	});
-	return (
-		content +
-		(truncated
-			? `\n… truncated — showing last ${shown} of ${totalLines} lines`
-			: "")
-	);
-}
-
-function notifyUI(
-	ctx: ExtensionContext,
-	args: string,
-	cwd: string,
-	out: string,
-	ok: boolean,
-	code: number,
-): void {
-	const displayLines = out.trimEnd().split("\n").slice(-MAX_WIDGET_LINES);
-	ctx.ui.setWidget(WIDGET_ID, undefined);
-	const boxLines = drawBox(args, cwd, displayLines, ok ? "ok" : "error", code);
-	const boxStr = boxLines.join("\n");
-	if (boxLines.length <= 35 && boxStr.length < 3000) {
-		ctx.ui.notify(boxStr, ok ? "info" : "error");
-	} else {
-		ctx.ui.notify(
-			`Command finished (exit ${code}). Output injected into chat.`,
-			ok ? "info" : "warning",
-		);
-	}
-}
-
-function handleClose(
-	code: number | null,
-	args: string,
-	cwd: string,
-	outputLines: string[],
-	ctx: ExtensionContext,
-	pi: ExtensionAPI,
-): void {
+function handleClose(opts: {
+	code: number | null;
+	args: string;
+	cwd: string;
+	outputLines: string[];
+	ctx: ExtensionContext;
+	pi: ExtensionAPI;
+}): void {
+	const { code, args, cwd, outputLines, ctx, pi } = opts;
 	const exitCode = code ?? 1;
 	const success = exitCode === 0;
 	const finalOutput = buildFinalOutput(outputLines.join("\n").trimEnd());
 
-	if (ctx.hasUI) notifyUI(ctx, args, cwd, finalOutput, success, exitCode);
+	if (ctx.hasUI)
+		notifyUI({ ctx, args, cwd, out: finalOutput, ok: success, code: exitCode });
 
 	if (finalOutput.trim()) {
-		const full = drawBox(
-			args,
+		const full = drawBox({
+			cmd: args,
 			cwd,
-			finalOutput.trimEnd().split("\n"),
-			success ? "ok" : "error",
-			exitCode,
-		).join("\n");
+			lines: finalOutput.trimEnd().split("\n"),
+			status: success ? "ok" : "error",
+			code: exitCode,
+		}).join("\n");
 		pi.sendMessage(
 			{
 				customType: "terminal-result",
@@ -121,11 +40,12 @@ function handleClose(
 	}
 }
 
-function runCommand(
-	pi: ExtensionAPI,
-	args: string,
-	ctx: ExtensionContext,
-): void {
+function runCommand(opts: {
+	pi: ExtensionAPI;
+	args: string;
+	ctx: ExtensionContext;
+}): void {
+	const { pi, args, ctx } = opts;
 	const cwd = ctx.cwd;
 	const outputLines: string[] = [];
 
@@ -160,7 +80,7 @@ function runCommand(
 	updateWidget("running");
 
 	proc.on("close", (code) =>
-		handleClose(code, args, cwd, outputLines, ctx, pi),
+		handleClose({ code, args, cwd, outputLines, ctx, pi }),
 	);
 
 	proc.on("error", (err) => {
@@ -178,7 +98,7 @@ export default function (pi: ExtensionAPI) {
 			return Promise.resolve();
 		}
 		// Fire-and-forget — spawn runs in background, handler returns immediately
-		runCommand(pi, args, ctx);
+		runCommand({ pi, args, ctx });
 		return Promise.resolve();
 	};
 

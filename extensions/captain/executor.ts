@@ -22,6 +22,15 @@ import { resolveModel } from "./types.js";
 const MAX_RETRIES = 10;
 const DEFAULT_TOOLS = ["read", "bash", "edit", "write"];
 
+// ── RunScope ──────────────────────────────────────────────────────────────
+
+/** The three values that flow through every step in a pipeline chain. */
+interface RunScope {
+	readonly input: string;
+	readonly original: string;
+	readonly ctx: RunCtx;
+}
+
 // ── Gate evaluation ───────────────────────────────────────────────────────
 
 function makeGateCtx(ctx: RunCtx): GateCtx {
@@ -39,11 +48,10 @@ function makeGateCtx(ctx: RunCtx): GateCtx {
 
 async function evalGate(
 	gate: Gate,
-	output: string,
-	gateCtx: GateCtx,
+	params: { output: string; ctx: GateCtx },
 ): Promise<{ passed: boolean; reason: string }> {
 	try {
-		const result = await gate({ output, ctx: gateCtx });
+		const result = await gate({ output: params.output, ctx: params.ctx });
 		return result === true
 			? { passed: true, reason: "passed" }
 			: { passed: false, reason: result };
@@ -59,25 +67,29 @@ async function evalGate(
 
 async function applyTransform(
 	transform: Transform | undefined,
-	output: string,
-	original: string,
-	ctx: RunCtx,
+	params: { output: string; original: string; ctx: RunCtx },
 ): Promise<string> {
-	if (!transform) return output;
-	return transform({ output, original, ctx: makeGateCtx(ctx) });
+	if (!transform) return params.output;
+	return transform({
+		output: params.output,
+		original: params.original,
+		ctx: makeGateCtx(params.ctx),
+	});
 }
 
 // ── Step execution ────────────────────────────────────────────────────────
 
 async function executeStepAttempt(
 	step: Step,
-	input: string,
-	original: string,
-	ctx: RunCtx,
-	retryCount: number,
+	scope: RunScope & { retryCount: number },
 ): Promise<StepResult> {
+	const { input, original, ctx, retryCount } = scope;
 	const resolvedModel = step.model
-		? resolveModel(step.model, ctx.modelRegistry, ctx.model)
+		? resolveModel({
+				pattern: step.model,
+				registry: ctx.modelRegistry,
+				fallback: ctx.model,
+			})
 		: ctx.model;
 
 	const result: StepResult = {
@@ -99,31 +111,31 @@ async function executeStepAttempt(
 	let toolCallCount: number;
 	const sf = ctx.sessionFactory;
 	if (sf) {
-		const session = await sf.createSession(step, ctx, resolvedModel);
-		({ output, toolCallCount } = await sf.runPrompt(
+		const session = await sf.createSession(step, { ctx, model: resolvedModel });
+		({ output, toolCallCount } = await sf.runPrompt({
 			session,
-			interpolated,
+			prompt: interpolated,
 			step,
 			ctx,
 			input,
 			original,
-		));
+		}));
 	} else {
-		const session = await createSession(step, ctx, resolvedModel);
-		({ output, toolCallCount } = await runPrompt(
+		const session = await createSession(step, { ctx, model: resolvedModel });
+		({ output, toolCallCount } = await runPrompt({
 			session,
-			interpolated,
+			prompt: interpolated,
 			step,
 			ctx,
 			input,
 			original,
-		));
+		}));
 	}
 	result.toolCallCount = toolCallCount;
 
 	const gateCtx = makeGateCtx(ctx);
 	const gateResult = step.gate
-		? await evalGate(step.gate, output, gateCtx)
+		? await evalGate(step.gate, { output, ctx: gateCtx })
 		: { passed: true, reason: "no gate" };
 	result.gateResult = gateResult;
 
@@ -162,13 +174,12 @@ async function executeStepAttempt(
 				...step,
 				prompt: `${step.prompt}\n\n[RETRY ${retryCount + 1}: ${gateResult.reason}]\n\n${output.slice(0, 1000)}`,
 			};
-			return executeStepAttempt(
-				retryStep,
+			return executeStepAttempt(retryStep, {
 				input,
 				original,
 				ctx,
-				retryCount + 1,
-			);
+				retryCount: retryCount + 1,
+			});
 		}
 		case "skip":
 			result.status = "skipped";
@@ -188,12 +199,9 @@ async function executeStepAttempt(
 		case "fallback": {
 			const { output: fallbackOut, results: fallbackResults } = await execute(
 				{ ...decision.step, kind: "step" },
-				input,
-				original,
-				ctx,
+				{ input, original, ctx },
 			);
 			// Emit each fallback step result so it appears in pipeline status output.
-			// executeStepAttempt returns a single StepResult, so we surface extras here.
 			for (const r of fallbackResults) {
 				ctx.onStepEnd?.(r);
 			}
@@ -211,17 +219,21 @@ async function executeStepAttempt(
 
 async function executeStep(
 	step: Step,
-	input: string,
-	original: string,
-	ctx: RunCtx,
+	scope: RunScope,
 ): Promise<{ output: string; results: StepResult[] }> {
+	const { input, original, ctx } = scope;
 	const start = Date.now();
 	await step.hooks?.onStart?.({ label: step.label, input, original });
 	ctx.onStepStart?.(step.label);
 
 	let result: StepResult;
 	try {
-		result = await executeStepAttempt(step, input, original, ctx, 0);
+		result = await executeStepAttempt(step, {
+			input,
+			original,
+			ctx,
+			retryCount: 0,
+		});
 	} catch (err) {
 		result = {
 			label: step.label,
@@ -237,35 +249,51 @@ async function executeStep(
 	await step.hooks?.onFinish?.({ label: step.label, input, original, result });
 	ctx.onStepEnd?.(result);
 
-	const transformed = await applyTransform(
-		step.transform,
-		result.output,
+	const transformed = await applyTransform(step.transform, {
+		output: result.output,
 		original,
 		ctx,
-	);
+	});
 	return { output: transformed, results: [result] };
 }
 
 // ── Container gate ────────────────────────────────────────────────────────
 
+interface ContainerGateOpts {
+	output: string;
+	results: StepResult[];
+	gate: Gate | undefined;
+	onFail: OnFail | undefined;
+	label: string;
+	transform: Transform | undefined;
+	original: string;
+	ctx: RunCtx;
+	rerunFn: () => Promise<{ output: string; results: StepResult[] }>;
+	retryCount?: number;
+}
+
 async function runContainerGate(
-	output: string,
-	results: StepResult[],
-	gate: Gate | undefined,
-	onFail: OnFail | undefined,
-	label: string,
-	transform: Transform | undefined,
-	original: string,
-	ctx: RunCtx,
-	rerunFn: () => Promise<{ output: string; results: StepResult[] }>,
-	retryCount = 0,
+	opts: ContainerGateOpts,
 ): Promise<{ output: string; results: StepResult[] }> {
+	const {
+		output,
+		results,
+		gate,
+		onFail,
+		label,
+		transform,
+		original,
+		ctx,
+		rerunFn,
+	} = opts;
+	const retryCount = opts.retryCount ?? 0;
+
 	if (!gate) {
-		const out = await applyTransform(transform, output, original, ctx);
+		const out = await applyTransform(transform, { output, original, ctx });
 		return { output: out, results };
 	}
 
-	const gateResult = await evalGate(gate, output, makeGateCtx(ctx));
+	const gateResult = await evalGate(gate, { output, ctx: makeGateCtx(ctx) });
 	const gateStepResult: StepResult = {
 		label: `[gate] ${label}`,
 		status: gateResult.passed ? "passed" : "failed",
@@ -276,7 +304,7 @@ async function runContainerGate(
 	ctx.onStepEnd?.(gateStepResult);
 
 	if (gateResult.passed) {
-		const out = await applyTransform(transform, output, original, ctx);
+		const out = await applyTransform(transform, { output, original, ctx });
 		return { output: out, results: [...results, gateStepResult] };
 	}
 
@@ -298,18 +326,11 @@ async function runContainerGate(
 				return { output, results: [...results, gateStepResult] };
 			}
 			const retried = await rerunFn();
-			return runContainerGate(
-				retried.output,
-				retried.results,
-				gate,
-				onFail,
-				label,
-				transform,
-				original,
-				ctx,
-				rerunFn,
-				retryCount + 1,
-			);
+			return runContainerGate({
+				...opts,
+				...retried,
+				retryCount: retryCount + 1,
+			});
 		}
 		case "skip":
 			gateStepResult.status = "skipped";
@@ -319,7 +340,7 @@ async function runContainerGate(
 			gateStepResult.status = "passed";
 			gateStepResult.error = `⚠️ Warning: ${gateResult.reason}`;
 			return {
-				output: await applyTransform(transform, output, original, ctx),
+				output: await applyTransform(transform, { output, original, ctx }),
 				results: [...results, gateStepResult],
 			};
 		case "fail":
@@ -328,12 +349,14 @@ async function runContainerGate(
 		case "fallback": {
 			const fb = await execute(
 				{ ...decision.step, kind: "step" },
-				output,
-				original,
-				ctx,
+				{ input: output, original, ctx },
 			);
 			return {
-				output: await applyTransform(transform, fb.output, original, ctx),
+				output: await applyTransform(transform, {
+					output: fb.output,
+					original,
+					ctx,
+				}),
 				results: [...results, gateStepResult, ...fb.results],
 			};
 		}
@@ -346,46 +369,48 @@ async function runContainerGate(
 
 async function executeSequential(
 	seq: Sequential,
-	input: string,
-	original: string,
-	ctx: RunCtx,
+	scope: RunScope,
 ): Promise<{ output: string; results: StepResult[] }> {
-	let current = input;
+	const { original, ctx } = scope;
+	let current = scope.input;
 	const allResults: StepResult[] = [];
 
 	for (const runnable of seq.steps) {
 		if (ctx.signal?.aborted) break;
-		const { output, results } = await execute(runnable, current, original, ctx);
+		const { output, results } = await execute(runnable, {
+			input: current,
+			original,
+			ctx,
+		});
 		allResults.push(...results);
 		current = output;
 		if (results.at(-1)?.status === "failed") break;
 	}
 
-	return runContainerGate(
-		current,
-		allResults,
-		seq.gate,
-		seq.onFail,
-		`sequential (${seq.steps.length} steps)`,
-		seq.transform,
+	return runContainerGate({
+		output: current,
+		results: allResults,
+		gate: seq.gate,
+		onFail: seq.onFail,
+		label: `sequential (${seq.steps.length} steps)`,
+		transform: seq.transform,
 		original,
 		ctx,
-		() => executeSequential(seq, input, original, ctx),
-	);
+		rerunFn: () => executeSequential(seq, scope),
+	});
 }
 
 // ── Parallel execution ────────────────────────────────────────────────────
 
 async function executeParallel(
 	par: Parallel,
-	input: string,
-	original: string,
-	ctx: RunCtx,
+	scope: RunScope,
 ): Promise<{ output: string; results: StepResult[] }> {
+	const { input, original, ctx } = scope;
 	const group = `parallel ×${par.steps.length}`;
 	const settled = await Promise.allSettled(
 		par.steps.map((s) =>
-			execute(s, input, original, { ...ctx, stepGroup: group }),
+			execute(s, { input, original, ctx: { ...ctx, stepGroup: group } }),
 		),
 	);
 
@@ -418,17 +443,17 @@ async function executeParallel(
 	};
 	const merged = await par.merge(outputs, mctx);
 
-	return runContainerGate(
-		merged,
-		allResults,
-		par.gate,
-		par.onFail,
-		group,
-		par.transform,
+	return runContainerGate({
+		output: merged,
+		results: allResults,
+		gate: par.gate,
+		onFail: par.onFail,
+		label: group,
+		transform: par.transform,
 		original,
 		ctx,
-		() => executeParallel(par, input, original, ctx),
-	);
+		rerunFn: () => executeParallel(par, scope),
+	});
 }
 
 // ── Main dispatch ─────────────────────────────────────────────────────────
@@ -436,19 +461,17 @@ async function executeParallel(
 /** Execute any Runnable recursively. */
 export async function execute(
 	runnable: Runnable,
-	input: string,
-	original: string,
-	ctx: RunCtx,
+	scope: RunScope,
 ): Promise<{ output: string; results: StepResult[] }> {
-	if (ctx.signal?.aborted) return { output: "(cancelled)", results: [] };
+	if (scope.ctx.signal?.aborted) return { output: "(cancelled)", results: [] };
 
 	switch (runnable.kind) {
 		case "step":
-			return executeStep(runnable, input, original, ctx);
+			return executeStep(runnable, scope);
 		case "sequential":
-			return executeSequential(runnable, input, original, ctx);
+			return executeSequential(runnable, scope);
 		case "parallel":
-			return executeParallel(runnable, input, original, ctx);
+			return executeParallel(runnable, scope);
 		default:
 			return {
 				output: `Unknown runnable kind: ${(runnable as Runnable & { kind: string }).kind}`,

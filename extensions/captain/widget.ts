@@ -43,11 +43,10 @@ function stepDetail(r: StepResult): string {
 /** Render one step as a single line: ● name  model  🔨 2/4  1.2s  detail… */
 export function renderStepLine(
 	r: StepResult,
-	width: number,
-	indent: number,
 	// biome-ignore lint/suspicious/noExplicitAny: pi theme API is not typed
-	theme: any,
+	opts: { width: number; indent: number; theme: any },
 ): string {
+	const { width, indent, theme } = opts;
 	const pad = " ".repeat(indent);
 	const dot = theme.fg(statusColor(r.status), statusDot(r.status));
 	const name = theme.fg(r.status === "running" ? "accent" : "dim", r.label);
@@ -117,11 +116,12 @@ function flattenSpec(r: Runnable, group?: string): PendingEntry[] {
 	}
 }
 
-function computePendingSteps(
-	spec: Runnable,
-	results: StepResult[],
-	currentSteps: Set<string>,
-): PendingEntry[] {
+function computePendingSteps(opts: {
+	spec: Runnable;
+	results: StepResult[];
+	currentSteps: Set<string>;
+}): PendingEntry[] {
+	const { spec, results, currentSteps } = opts;
 	const all = flattenSpec(spec);
 	const seen = new Map<string, number>();
 	for (const r of results) seen.set(r.label, (seen.get(r.label) ?? 0) + 1);
@@ -143,16 +143,25 @@ function computePendingSteps(
 
 // ── Step list rendering ───────────────────────────────────────────────────
 
-function renderStepList(
-	results: StepResult[],
-	currentSteps: Set<string>,
-	currentStepStreams: Map<string, string>,
-	currentStepToolCalls: Map<string, number>,
-	spec: Runnable,
-	width: number,
+function renderStepList(opts: {
+	results: StepResult[];
+	currentSteps: Set<string>;
+	currentStepStreams: Map<string, string>;
+	currentStepToolCalls: Map<string, number>;
+	spec: Runnable;
+	width: number;
 	// biome-ignore lint/suspicious/noExplicitAny: pi theme API is not typed
-	theme: any,
-): string[] {
+	theme: any;
+}): string[] {
+	const {
+		results,
+		currentSteps,
+		currentStepStreams,
+		currentStepToolCalls,
+		spec,
+		width,
+		theme,
+	} = opts;
 	// Build running step results from streaming state
 	const runningSteps: StepResult[] = [...currentSteps].map((label) => {
 		const stream = currentStepStreams.get(label) ?? "";
@@ -175,7 +184,7 @@ function renderStepList(
 	});
 
 	const active = [...results, ...runningSteps];
-	const pending = computePendingSteps(spec, results, currentSteps);
+	const pending = computePendingSteps({ spec, results, currentSteps });
 
 	if (active.length === 0 && pending.length === 0)
 		return [theme.fg("dim", "  Waiting for steps...")];
@@ -192,10 +201,10 @@ function renderStepList(
 		}
 		if (r.group) {
 			lines.push(
-				`${theme.fg("dim", "  │")}${renderStepLine(r, width - 3, 1, theme)}`,
+				`${theme.fg("dim", "  │")}${renderStepLine(r, { width: width - 3, indent: 1, theme })}`,
 			);
 		} else {
-			lines.push(renderStepLine(r, width, 2, theme));
+			lines.push(renderStepLine(r, { width, indent: 2, theme }));
 		}
 	};
 
@@ -251,15 +260,15 @@ export function updateWidget(ctx: ExtensionContext, state: PipelineState) {
 					theme.fg("accent", "─".repeat(width)),
 					truncateToWidth(header, width),
 					theme.fg("accent", "─".repeat(width)),
-					...renderStepList(
-						state.results,
-						state.currentSteps,
-						state.currentStepStreams,
-						state.currentStepToolCalls,
-						state.spec,
+					...renderStepList({
+						results: state.results,
+						currentSteps: state.currentSteps,
+						currentStepStreams: state.currentStepStreams,
+						currentStepToolCalls: state.currentStepToolCalls,
+						spec: state.spec,
 						width,
 						theme,
-					),
+					}),
 				];
 				text.setText(lines.join("\n"));
 				return text.render(width);

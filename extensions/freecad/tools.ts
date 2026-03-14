@@ -69,6 +69,7 @@ export const freecadCapabilities: ToolDefinition = {
 	description:
 		"Show what the FreeCAD agent can do and confirm FreeCAD is available.",
 	parameters: Type.Object({}),
+	// biome-ignore lint/complexity/useMaxParams: implements AgentTool.execute — signature fixed by pi SDK
 	async execute(_id, _params, _signal, _onUpdate, _ctx) {
 		const output = await runAgent(["--show-capabilities"]);
 		return { content: [{ type: "text", text: output }], details: {} };
@@ -81,6 +82,7 @@ export const freecadPrompt: ToolDefinition = {
 	description:
 		"Execute a natural language CAD command, e.g. 'Create a box 100x50x25'.",
 	parameters: PromptParams,
+	// biome-ignore lint/complexity/useMaxParams: implements AgentTool.execute — signature fixed by pi SDK
 	async execute(_id, params, _signal, _onUpdate, _ctx) {
 		const { prompt } = params as { prompt: string };
 		const output = await runAgent(["--prompt", prompt]);
@@ -94,6 +96,7 @@ export const freecadCreate: ToolDefinition = {
 	description:
 		"Create a basic 3D shape (box, cylinder, sphere) and save it to a .FCStd file.",
 	parameters: CreateParams,
+	// biome-ignore lint/complexity/useMaxParams: implements AgentTool.execute — signature fixed by pi SDK
 	async execute(_id, params, _signal, _onUpdate, _ctx) {
 		const { shape, dimensions, output_dir, name } = params as {
 			shape: string;
@@ -123,6 +126,7 @@ export const freecadExport: ToolDefinition = {
 	description:
 		"Open an existing .FCStd file and export it to STEP, IGES, STL, DXF, or PDF.",
 	parameters: ExportParams,
+	// biome-ignore lint/complexity/useMaxParams: implements AgentTool.execute — signature fixed by pi SDK
 	async execute(_id, params, _signal, _onUpdate, _ctx) {
 		const { input_file, output_file, format } = params as {
 			input_file: string;
@@ -144,6 +148,7 @@ export const freecadBatch: ToolDefinition = {
 	description:
 		"Batch-process all .FCStd files matching a glob pattern in a directory.",
 	parameters: BatchParams,
+	// biome-ignore lint/complexity/useMaxParams: implements AgentTool.execute — signature fixed by pi SDK
 	async execute(_id, params, _signal, _onUpdate, _ctx) {
 		const { directory, pattern, operation, parallel } = params as {
 			directory: string;

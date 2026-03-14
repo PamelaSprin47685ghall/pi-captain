@@ -4,14 +4,15 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth } from "@mariozechner/pi-tui";
 import type { RefactorState } from "./state.js";
 
-function renderHeader(
+function renderHeader(opts: {
 	// biome-ignore lint/suspicious/noExplicitAny: pi theme API is not typed
-	theme: any,
-	width: number,
-	passCount: number,
-	maxPasses: number,
-	target: string,
-): string[] {
+	theme: any;
+	width: number;
+	passCount: number;
+	maxPasses: number;
+	target: string;
+}): string[] {
+	const { theme, width, passCount, maxPasses, target } = opts;
 	const lines: string[] = [];
 	const add = (s: string) => lines.push(truncateToWidth(s, width));
 
@@ -24,13 +25,14 @@ function renderHeader(
 	return lines;
 }
 
-function renderStatus(
+function renderStatus(opts: {
 	// biome-ignore lint/suspicious/noExplicitAny: pi theme API is not typed
-	theme: any,
-	width: number,
-	state: RefactorState,
-	lastPass: RefactorState["passes"][0] | undefined,
-): string[] {
+	theme: any;
+	width: number;
+	state: RefactorState;
+	lastPass: RefactorState["passes"][0] | undefined;
+}): string[] {
+	const { theme, width, state, lastPass } = opts;
 	const lines: string[] = [];
 	const add = (s: string) => lines.push(truncateToWidth(s, width));
 
@@ -70,8 +72,14 @@ export function updateWidget(ctx: ExtensionContext, state: RefactorState) {
 			const lastPass = state.passes[passCount - 1];
 
 			const lines: string[] = [
-				...renderHeader(theme, width, passCount, state.maxPasses, state.target),
-				...renderStatus(theme, width, state, lastPass),
+				...renderHeader({
+					theme,
+					width,
+					passCount,
+					maxPasses: state.maxPasses,
+					target: state.target,
+				}),
+				...renderStatus({ theme, width, state, lastPass }),
 			];
 
 			lines.push(theme.fg("accent", "─".repeat(width)));

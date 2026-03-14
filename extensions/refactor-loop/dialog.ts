@@ -9,14 +9,15 @@ import {
 	truncateToWidth,
 } from "@mariozechner/pi-tui";
 
-export function makeTextInputDialog(
-	title: string,
-	hint: string,
-	tui: TUI,
+export function makeTextInputDialog(opts: {
+	title: string;
+	hint: string;
+	tui: TUI;
 	// biome-ignore lint/suspicious/noExplicitAny: pi theme API is not typed
-	theme: any,
-	done: (value: string | null) => void,
-) {
+	theme: any;
+	done: (value: string | null) => void;
+}) {
+	const { title, hint, tui, theme, done } = opts;
 	let cachedLines: string[] | undefined;
 
 	const editorTheme: EditorTheme = {

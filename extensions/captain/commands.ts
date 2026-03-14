@@ -16,13 +16,14 @@ import { clearWidget, updateWidget } from "./widget.js";
 
 // ── Execution helpers ──────────────────────────────────────────────────────
 
-async function buildRunCtx(
-	pi: ExtensionAPI,
-	ctx: ExtensionCommandContext,
-	pipelineName: string,
-	pipelineState: PipelineState,
-	signal?: AbortSignal,
-): Promise<RunCtx | undefined> {
+async function buildRunCtx(opts: {
+	pi: ExtensionAPI;
+	ctx: ExtensionCommandContext;
+	pipelineName: string;
+	pipelineState: PipelineState;
+	signal?: AbortSignal;
+}): Promise<RunCtx | undefined> {
+	const { pi, ctx, pipelineName, pipelineState, signal } = opts;
 	const model = ctx.model;
 	if (!model) {
 		ctx.ui.notify("No model available.", "error");
@@ -30,7 +31,7 @@ async function buildRunCtx(
 	}
 	const apiKey = (await ctx.modelRegistry.getApiKey(model)) ?? "";
 	return {
-		exec: (cmd, args, opts) => pi.exec(cmd, [...args], opts),
+		exec: ({ cmd, args, signal }) => pi.exec(cmd, [...args], { signal }),
 		model,
 		modelRegistry: ctx.modelRegistry,
 		apiKey,
@@ -64,28 +65,32 @@ async function buildRunCtx(
 	};
 }
 
-async function runPipelineFromCommand(
-	pi: ExtensionAPI,
-	spec: Runnable,
-	input: string,
-	pipelineState: PipelineState,
-	job: CaptainJob,
-	_state: CaptainState,
-	ctx: ExtensionCommandContext,
-): Promise<void> {
+async function runPipelineFromCommand(opts: {
+	pi: ExtensionAPI;
+	spec: Runnable;
+	input: string;
+	pipelineState: PipelineState;
+	job: CaptainJob;
+	ctx: ExtensionCommandContext;
+}): Promise<void> {
+	const { pi, spec, input, pipelineState, job, ctx } = opts;
 	const model = ctx.model;
 	if (!model) return;
-	const runCtx = await buildRunCtx(
+	const runCtx = await buildRunCtx({
 		pi,
 		ctx,
-		pipelineState.name,
+		pipelineName: pipelineState.name,
 		pipelineState,
-		job.controller.signal,
-	);
+		signal: job.controller.signal,
+	});
 	if (!runCtx) return;
 
 	try {
-		const { output, results } = await execute(spec, input, input, runCtx);
+		const { output, results } = await execute(spec, {
+			input,
+			original: input,
+			ctx: runCtx,
+		});
 		pipelineState.endTime = Date.now();
 		clearWidget(ctx, pipelineState);
 		if (pipelineState.status === "cancelled") {
@@ -125,14 +130,15 @@ async function runPipelineFromCommand(
 	}
 }
 
-function fireAndForget(
-	pi: ExtensionAPI,
-	spec: Runnable,
-	name: string,
-	input: string,
-	state: CaptainState,
-	ctx: ExtensionCommandContext,
-): void {
+function fireAndForget(opts: {
+	pi: ExtensionAPI;
+	spec: Runnable;
+	name: string;
+	input: string;
+	state: CaptainState;
+	ctx: ExtensionCommandContext;
+}): void {
+	const { pi, spec, name, input, state, ctx } = opts;
 	const pipelineState: PipelineState = {
 		name,
 		spec,
@@ -145,7 +151,7 @@ function fireAndForget(
 	};
 	const job = state.allocateJob(pipelineState);
 	updateWidget(ctx, pipelineState);
-	void runPipelineFromCommand(pi, spec, input, pipelineState, job, state, ctx);
+	void runPipelineFromCommand({ pi, spec, input, pipelineState, job, ctx });
 }
 
 // ── Input parsing ─────────────────────────────────────────────────────────
@@ -183,12 +189,13 @@ export function parseInlineFlags(input: string): {
 	return { flags, prompt: rest.trim() };
 }
 
-async function ensurePipelineLoaded(
-	name: string,
-	cwd: string,
-	state: CaptainState,
-	notify: (msg: string, level: "info" | "error") => void,
-): Promise<string | undefined> {
+async function ensurePipelineLoaded(opts: {
+	name: string;
+	cwd: string;
+	state: CaptainState;
+	notify: (msg: string, level: "info" | "error") => void;
+}): Promise<string | undefined> {
+	const { name, cwd, state, notify } = opts;
 	if (state.pipelines[name]) return name;
 	try {
 		const resolved = await state.resolvePreset(name, cwd);
@@ -253,21 +260,21 @@ export function registerCommands(pi: ExtensionAPI, state: CaptainState): void {
 					ctx.ui.notify("No input provided.", "error");
 					return;
 				}
-				const resolvedName = await ensurePipelineLoaded(
-					selected,
-					ctx.cwd,
+				const resolvedName = await ensurePipelineLoaded({
+					name: selected,
+					cwd: ctx.cwd,
 					state,
-					(msg, lvl) => ctx.ui.notify(msg, lvl),
-				);
+					notify: (msg, lvl) => ctx.ui.notify(msg, lvl),
+				});
 				if (!resolvedName) return;
-				fireAndForget(
+				fireAndForget({
 					pi,
-					state.pipelines[resolvedName].spec,
-					resolvedName,
-					input.trim(),
+					spec: state.pipelines[resolvedName].spec,
+					name: resolvedName,
+					input: input.trim(),
 					state,
 					ctx,
-				);
+				});
 				return;
 			}
 
@@ -275,12 +282,12 @@ export function registerCommands(pi: ExtensionAPI, state: CaptainState): void {
 
 			if (!input) {
 				// Name only → show details
-				const resolvedName = await ensurePipelineLoaded(
-					pipeline,
-					ctx.cwd,
+				const resolvedName = await ensurePipelineLoaded({
+					name: pipeline,
+					cwd: ctx.cwd,
 					state,
-					(msg, lvl) => ctx.ui.notify(msg, lvl),
-				);
+					notify: (msg, lvl) => ctx.ui.notify(msg, lvl),
+				});
 				if (!resolvedName) return;
 				const spec = state.pipelines[resolvedName].spec;
 				ctx.ui.notify(
@@ -291,21 +298,21 @@ export function registerCommands(pi: ExtensionAPI, state: CaptainState): void {
 			}
 
 			// Both name and input → load and run
-			const resolvedName = await ensurePipelineLoaded(
-				pipeline,
-				ctx.cwd,
+			const resolvedName = await ensurePipelineLoaded({
+				name: pipeline,
+				cwd: ctx.cwd,
 				state,
-				(msg, lvl) => ctx.ui.notify(msg, lvl),
-			);
+				notify: (msg, lvl) => ctx.ui.notify(msg, lvl),
+			});
 			if (!resolvedName) return;
-			fireAndForget(
+			fireAndForget({
 				pi,
-				state.pipelines[resolvedName].spec,
-				resolvedName,
+				spec: state.pipelines[resolvedName].spec,
+				name: resolvedName,
 				input,
 				state,
 				ctx,
-			);
+			});
 		},
 	});
 
@@ -367,7 +374,14 @@ export function registerCommands(pi: ExtensionAPI, state: CaptainState): void {
 				onFail: skip,
 				transform: full,
 			};
-			fireAndForget(pi, stepSpec, `step:${stepSpec.label}`, prompt, state, ctx);
+			fireAndForget({
+				pi,
+				spec: stepSpec,
+				name: `step:${stepSpec.label}`,
+				input: prompt,
+				state,
+				ctx,
+			});
 		},
 	});
 

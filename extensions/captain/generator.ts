@@ -95,12 +95,13 @@ export function parseGeneratedPipeline(raw: string): GeneratedPipeline {
 	};
 }
 
-export async function generatePipeline(
-	goal: string,
-	model: Model<Api>,
-	apiKey: string,
-	signal?: AbortSignal,
-): Promise<GeneratedPipeline> {
+export async function generatePipeline(opts: {
+	goal: string;
+	model: Model<Api>;
+	apiKey: string;
+	signal?: AbortSignal;
+}): Promise<GeneratedPipeline> {
+	const { goal, model, apiKey, signal } = opts;
 	const response = await complete(
 		model,
 		{

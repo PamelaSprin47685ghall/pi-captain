@@ -35,11 +35,12 @@ export function handleNonInteractiveBlock(label: string) {
 	};
 }
 
-export async function handleUserConfirmation(
-	command: string,
-	label: string,
-	ctx: ExtensionContext,
-) {
+export async function handleUserConfirmation(opts: {
+	command: string;
+	label: string;
+	ctx: ExtensionContext;
+}) {
+	const { command, label, ctx } = opts;
 	const displayCmd =
 		command.length > 120 ? `${command.slice(0, 120)}…` : command;
 	const ok = await ctx.ui.confirm(

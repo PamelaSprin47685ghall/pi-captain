@@ -3,11 +3,11 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { RefactorState } from "./state.js";
 
-export async function commitAndPush(
-	pi: ExtensionAPI,
-	state: RefactorState,
-	_ctx: never, // Unused parameter
-): Promise<string> {
+export async function commitAndPush(opts: {
+	pi: ExtensionAPI;
+	state: RefactorState;
+}): Promise<string> {
+	const { pi, state } = opts;
 	// Build a descriptive commit message from all passes
 	const passLines = state.passes
 		.map((p) => `- Pass ${p.pass}: ${p.change}`)

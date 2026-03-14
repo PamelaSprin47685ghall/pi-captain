@@ -16,11 +16,11 @@ export interface ModelRegistryLike {
 	getApiKey(model: Model<Api>): Promise<string | undefined>;
 }
 
-export type ExecFn = (
-	cmd: string,
-	args: readonly string[],
-	opts?: { signal?: AbortSignal },
-) => Promise<{ stdout: string; stderr: string; code: number }>;
+export type ExecFn = (opts: {
+	cmd: string;
+	args: readonly string[];
+	signal?: AbortSignal;
+}) => Promise<{ stdout: string; stderr: string; code: number }>;
 
 // ── Extension point contexts ───────────────────────────────────────────────
 
@@ -175,17 +175,20 @@ export interface Pool {
  * between types.ts and session.ts.
  */
 export interface SessionFactory {
-	// biome-ignore lint/suspicious/noExplicitAny: session type is opaque (defined in session.ts)
-	createSession(step: Step, ctx: RunCtx, model: Model<Api>): Promise<any>;
-	runPrompt(
-		// biome-ignore lint/suspicious/noExplicitAny: session type is opaque (defined in session.ts)
-		session: any,
-		prompt: string,
+	createSession(
 		step: Step,
-		ctx: RunCtx,
-		input: string,
-		original: string,
-	): Promise<{ output: string; toolCallCount: number }>;
+		opts: { ctx: RunCtx; model: Model<Api> },
+		// biome-ignore lint/suspicious/noExplicitAny: session type is opaque (defined in session.ts)
+	): Promise<any>;
+	runPrompt(opts: {
+		// biome-ignore lint/suspicious/noExplicitAny: session type is opaque (defined in session.ts)
+		session: any;
+		prompt: string;
+		step: Step;
+		ctx: RunCtx;
+		input: string;
+		original: string;
+	}): Promise<{ output: string; toolCallCount: number }>;
 }
 
 // ── Runtime context ───────────────────────────────────────────────────────
@@ -296,11 +299,12 @@ export function collectStepLabels(r: Runnable): string[] {
 }
 
 /** Resolve a model shorthand (e.g. "sonnet") to a Model object via the registry. */
-export function resolveModel(
-	pattern: string,
-	registry: ModelRegistryLike,
-	fallback: Model<Api>,
-): Model<Api> {
+export function resolveModel(opts: {
+	pattern: string;
+	registry: ModelRegistryLike;
+	fallback: Model<Api>;
+}): Model<Api> {
+	const { pattern, registry, fallback } = opts;
 	const all = registry.getAll();
 	const lower = pattern.toLowerCase();
 	const sameProvider = (m: Model<Api>) => m.provider === fallback.provider;

@@ -142,7 +142,11 @@ export class CaptainState {
 	loadPipelineFile(
 		filePath: string,
 	): Promise<{ name: string; spec: Runnable; source: string }> {
-		return loadTsPipelineFile(filePath, this.captainDir, this.pipelines);
+		return loadTsPipelineFile({
+			filePath,
+			captainDir: this.captainDir,
+			pipelines: this.pipelines,
+		});
 	}
 
 	/** @deprecated Use loadPipelineFile */

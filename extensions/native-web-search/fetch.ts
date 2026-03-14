@@ -13,11 +13,12 @@ export type SearchResult =
 	| { ok: true; text: string }
 	| { ok: false; error: string };
 
-export async function runWebSearch(
-	query: string,
-	apiKey: string,
-	signal?: AbortSignal,
-): Promise<SearchResult> {
+export async function runWebSearch(opts: {
+	query: string;
+	apiKey: string;
+	signal?: AbortSignal;
+}): Promise<SearchResult> {
+	const { query, apiKey, signal } = opts;
 	const isOAuth = apiKey.includes("sk-ant-oat");
 
 	const headers: Record<string, string> = isOAuth

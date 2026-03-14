@@ -25,16 +25,17 @@ function countWords(content: string): number {
 	return content.split(/\s+/).filter((w) => w.length > 0).length;
 }
 
-function walkDirectory(
-	dirPath: string,
-	report: AnalysisReport,
-	rootDir: string,
-): void {
+function walkDirectory(opts: {
+	dirPath: string;
+	report: AnalysisReport;
+	rootDir: string;
+}): void {
+	const { dirPath, report, rootDir } = opts;
 	if (!existsSync(dirPath)) return;
 	for (const entry of readdirSync(dirPath)) {
 		const fullPath = join(dirPath, entry);
 		if (statSync(fullPath).isDirectory()) {
-			walkDirectory(fullPath, report, rootDir);
+			walkDirectory({ dirPath: fullPath, report, rootDir });
 		} else if (/\.(md|json|ts|py|sh)$/.test(entry)) {
 			const content = readFileSync(fullPath, "utf-8");
 			report.totalLines += countLines(content);
@@ -99,7 +100,7 @@ export function analyze(skillPath: string): AnalysisReport {
 		files: [],
 	};
 
-	walkDirectory(dir, report, dir);
+	walkDirectory({ dirPath: dir, report, rootDir: dir });
 
 	const skillMdPath = join(dir, "SKILL.md");
 	if (existsSync(skillMdPath)) {

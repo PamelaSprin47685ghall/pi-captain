@@ -10,11 +10,9 @@
  * Features: per-action session memory, /git-safety command, non-UI auto-block.
  */
 
-import type {
-	ExtensionAPI,
-	ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { isToolCallEventType } from "@mariozechner/pi-coding-agent";
+import { processPatternMatch } from "./handlers.js";
 import {
 	ALWAYS_BLOCKED_PATTERNS,
 	GIT_PATTERNS,
@@ -22,102 +20,6 @@ import {
 	sessionApproved,
 	sessionBlocked,
 } from "./patterns.js";
-
-// ── Handler Functions ────────────────────────────────────────────────────────
-
-async function processPatternMatch(
-	action: string,
-	severity: string,
-	command: string,
-	ctx: ExtensionContext,
-) {
-	// Check session memory first
-	if (sessionBlocked.has(action)) {
-		if (ctx.hasUI)
-			ctx.ui.notify(`🚫 ${action} — auto-blocked (session)`, "warning");
-		return { block: true, reason: `${action} blocked (session setting)` };
-	}
-	if (sessionApproved.has(action)) {
-		return undefined; // silently approved
-	}
-	// No UI? Block everything
-	if (!ctx.hasUI) {
-		return {
-			block: true,
-			reason: `${action} requires confirmation (no UI)`,
-		};
-	}
-	// Build confirmation dialog
-	const displayCmd =
-		command.length > 120 ? `${command.slice(0, 120)}…` : command;
-
-	if (severity === "critical") {
-		return await handleCritical(action, displayCmd, ctx);
-	}
-	return await handleStandard(action, displayCmd, ctx);
-}
-
-async function handleCritical(
-	action: string,
-	displayCmd: string,
-	ctx: ExtensionContext,
-) {
-	// Critical: simple confirm with auto-deny timeout (30s)
-	const controller = new AbortController();
-	const timeout = setTimeout(() => controller.abort(), 30_000);
-
-	const choice = await ctx.ui.select(
-		`🔴 CRITICAL: ${action}\n\n  ${displayCmd}\n\nAllow? (auto-deny in 30s)`,
-		["✅ Allow once", "🚫 Block"],
-		{ signal: controller.signal },
-	);
-
-	clearTimeout(timeout);
-	if (controller.signal.aborted || choice !== "✅ Allow once") {
-		const reason = controller.signal.aborted
-			? "Timed out (30s)"
-			: "Blocked by user";
-		return { block: true, reason: `${action}: ${reason}` };
-	}
-	return undefined;
-}
-
-async function handleStandard(
-	action: string,
-	displayCmd: string,
-	ctx: ExtensionContext,
-) {
-	// Standard: offer session-remember options
-	const choice = await ctx.ui.select(
-		`🟡 ${action}\n\n  ${displayCmd}\n\nAllow?`,
-		[
-			"✅ Allow once",
-			"🚫 Block once",
-			`✅✅ Auto-approve "${action}" for this session`,
-			`🚫🚫 Auto-block "${action}" for this session`,
-		],
-	);
-
-	if (!choice || choice.startsWith("🚫🚫")) {
-		sessionBlocked.add(action);
-		ctx.ui.notify(
-			`🚫 All "${action}" commands auto-blocked for this session`,
-			"warning",
-		);
-		return { block: true, reason: `${action} blocked by user (session)` };
-	}
-	if (choice.startsWith("🚫")) {
-		return { block: true, reason: `${action} blocked by user` };
-	}
-	if (choice.startsWith("✅✅")) {
-		sessionApproved.add(action);
-		ctx.ui.notify(
-			`✅ All "${action}" commands auto-approved for this session`,
-			"info",
-		);
-	}
-	return undefined;
-}
 
 // ── Extension ────────────────────────────────────────────────────────────────
 
@@ -191,7 +93,7 @@ export default function (pi: ExtensionAPI) {
 		// Find first matching pattern (patterns are ordered critical-first)
 		for (const { pattern, action, severity } of GIT_PATTERNS) {
 			if (!pattern.test(command)) continue;
-			return await processPatternMatch(action, severity, command, ctx);
+			return await processPatternMatch({ action, severity, command, ctx });
 		}
 
 		return undefined;

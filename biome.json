@@ -23,7 +23,11 @@
 				"noUselessStringConcat": "error",
 				"noUselessUndefinedInitialization": "error",
 				"useDateNow": "error",
-				"useSimplifiedLogicExpression": "error"
+				"useSimplifiedLogicExpression": "error",
+				"useMaxParams": {
+					"level": "error",
+					"options": { "max": 2 }
+				}
 			},
 
 			"correctness": {

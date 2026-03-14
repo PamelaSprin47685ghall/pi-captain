@@ -675,27 +675,41 @@ describe("resolveModel", () => {
 
 	test("returns fallback when registry is empty", () => {
 		const reg = makeRegistry([]);
-		expect(resolveModel("sonnet", reg, FAKE_MODEL)).toBe(FAKE_MODEL);
+		expect(
+			resolveModel({ pattern: "sonnet", registry: reg, fallback: FAKE_MODEL }),
+		).toBe(FAKE_MODEL);
 	});
 
 	test("returns exact match from same provider", () => {
 		const model = { id: "claude-sonnet-4-5", provider: "anthropic" };
 		const reg = makeRegistry([model]);
-		const result = resolveModel("claude-sonnet-4-5", reg, FAKE_MODEL);
+		const result = resolveModel({
+			pattern: "claude-sonnet-4-5",
+			registry: reg,
+			fallback: FAKE_MODEL,
+		});
 		expect(result.id).toBe("claude-sonnet-4-5");
 	});
 
 	test("returns partial match from same provider", () => {
 		const model = { id: "claude-sonnet-3-7", provider: "anthropic" };
 		const reg = makeRegistry([model]);
-		const result = resolveModel("sonnet", reg, FAKE_MODEL);
+		const result = resolveModel({
+			pattern: "sonnet",
+			registry: reg,
+			fallback: FAKE_MODEL,
+		});
 		expect(result.id).toBe("claude-sonnet-3-7");
 	});
 
 	test("returns fallback when no match in same provider", () => {
 		const model = { id: "gpt-4", provider: "openai" };
 		const reg = makeRegistry([model]);
-		const result = resolveModel("gpt-4", reg, FAKE_MODEL);
+		const result = resolveModel({
+			pattern: "gpt-4",
+			registry: reg,
+			fallback: FAKE_MODEL,
+		});
 		expect(result).toBe(FAKE_MODEL);
 	});
 });
@@ -733,23 +747,39 @@ describe("renderStepLine", () => {
 	};
 
 	test("renders step label", () => {
-		const line = renderStepLine(baseResult, 100, 0, mockTheme);
+		const line = renderStepLine(baseResult, {
+			width: 100,
+			indent: 0,
+			theme: mockTheme,
+		});
 		expect(line).toContain("my-step");
 	});
 
 	test("renders model id in shortened form", () => {
-		const line = renderStepLine(baseResult, 100, 0, mockTheme);
+		const line = renderStepLine(baseResult, {
+			width: 100,
+			indent: 0,
+			theme: mockTheme,
+		});
 		// shortenModelId("claude-sonnet-4-5") → "sonnet 4.5"
 		expect(line).toContain("sonnet");
 	});
 
 	test("renders tool counts", () => {
-		const line = renderStepLine(baseResult, 100, 0, mockTheme);
+		const line = renderStepLine(baseResult, {
+			width: 100,
+			indent: 0,
+			theme: mockTheme,
+		});
 		expect(line).toContain("2/4");
 	});
 
 	test("renders elapsed time", () => {
-		const line = renderStepLine(baseResult, 100, 0, mockTheme);
+		const line = renderStepLine(baseResult, {
+			width: 100,
+			indent: 0,
+			theme: mockTheme,
+		});
 		expect(line).toContain("1.5s");
 	});
 
@@ -759,12 +789,16 @@ describe("renderStepLine", () => {
 			output: "",
 			error: "something went wrong",
 		};
-		const line = renderStepLine(r, 100, 0, mockTheme);
+		const line = renderStepLine(r, { width: 100, indent: 0, theme: mockTheme });
 		expect(line).toContain("my-step");
 	});
 
 	test("handles indent correctly", () => {
-		const line = renderStepLine(baseResult, 100, 4, mockTheme);
+		const line = renderStepLine(baseResult, {
+			width: 100,
+			indent: 4,
+			theme: mockTheme,
+		});
 		expect(line.startsWith("    ")).toBe(true);
 	});
 
@@ -774,7 +808,7 @@ describe("renderStepLine", () => {
 			status: "failed",
 			output: "Error occurred",
 		};
-		const line = renderStepLine(r, 100, 0, mockTheme);
+		const line = renderStepLine(r, { width: 100, indent: 0, theme: mockTheme });
 		expect(line).toContain("my-step");
 	});
 });
@@ -842,12 +876,20 @@ describe("buildCompletionText", () => {
 	];
 
 	test("includes pipeline name in output", () => {
-		const text = buildCompletionText("my-pipe", "final output", mockResults);
+		const text = buildCompletionText({
+			name: "my-pipe",
+			output: "final output",
+			results: mockResults,
+		});
 		expect(text).toContain("my-pipe");
 	});
 
 	test("reports step counts correctly", () => {
-		const text = buildCompletionText("pipe", "out", mockResults);
+		const text = buildCompletionText({
+			name: "pipe",
+			output: "out",
+			results: mockResults,
+		});
 		expect(text).toContain("3");
 		expect(text).toContain("1 passed");
 		expect(text).toContain("1 failed");
@@ -855,14 +897,24 @@ describe("buildCompletionText", () => {
 	});
 
 	test("includes the final output", () => {
-		const text = buildCompletionText("pipe", "final result here", mockResults);
+		const text = buildCompletionText({
+			name: "pipe",
+			output: "final result here",
+			results: mockResults,
+		});
 		expect(text).toContain("final result here");
 	});
 
 	test("includes elapsed time", () => {
 		const start = Date.now() - 2000;
 		const end = Date.now();
-		const text = buildCompletionText("pipe", "out", [], start, end);
+		const text = buildCompletionText({
+			name: "pipe",
+			output: "out",
+			results: [],
+			startTime: start,
+			endTime: end,
+		});
 		expect(text).toMatch(/\d+\.\d+s/);
 	});
 });

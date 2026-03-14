@@ -33,14 +33,14 @@ export default function (pi: ExtensionAPI) {
 		const entries = ctx.sessionManager.getBranch() as SessionEntry[];
 		if (entries.length > 0) {
 			// Existing session — generate label from history
-			scheduleRename(entries, ctx, 500);
+			scheduleRename({ entries, ctx, delay: 500 });
 		}
 	});
 
 	// Update tab name after each agent turn
 	pi.on("agent_end", async (_event, ctx) => {
 		const entries = ctx.sessionManager.getBranch() as SessionEntry[];
-		scheduleRename(entries, ctx);
+		scheduleRename({ entries, ctx });
 	});
 
 	// Reset tab name on shutdown

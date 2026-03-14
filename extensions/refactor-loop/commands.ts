@@ -5,27 +5,28 @@ import { makeTextInputDialog } from "./dialog.js";
 import type { RefactorState } from "./state.js";
 import { updateWidget } from "./widget.js";
 
-async function handleRefactorCommand(
-	pi: ExtensionAPI,
-	_getState: () => RefactorState,
-	setState: (state: RefactorState) => void,
-	args: string | undefined,
-	ctx: import("@mariozechner/pi-coding-agent").ExtensionContext,
-) {
+async function handleRefactorCommand(opts: {
+	pi: ExtensionAPI;
+	setState: (state: RefactorState) => void;
+	args: string | undefined;
+	ctx: import("@mariozechner/pi-coding-agent").ExtensionContext;
+}) {
+	const { pi, setState, args, ctx } = opts;
 	if (!ctx.hasUI) return;
 
 	let target: string | null | undefined = args?.trim();
 
 	// If no args, prompt the user for what to refactor
 	if (!target) {
+		// biome-ignore lint/complexity/useMaxParams: pi SDK's ctx.ui.custom callback signature is fixed
 		target = await ctx.ui.custom<string | null>((tui, theme, _kb, done) =>
-			makeTextInputDialog(
-				"Refactor Pipeline",
-				"What should be refactored? (file path, function name, module, etc.)",
+			makeTextInputDialog({
+				title: "Refactor Pipeline",
+				hint: "What should be refactored? (file path, function name, module, etc.)",
 				tui,
 				theme,
 				done,
-			),
+			}),
 		);
 	}
 
@@ -36,14 +37,15 @@ async function handleRefactorCommand(
 
 	// Ask for test command
 	const testCommand = await ctx.ui.custom<string | null>(
+		// biome-ignore lint/complexity/useMaxParams: pi SDK's ctx.ui.custom callback signature is fixed
 		(tui, theme, _kb, done) =>
-			makeTextInputDialog(
-				"Test Command",
-				"Command to verify each pass (e.g. bun test, npm test, pytest). Leave empty to skip.",
+			makeTextInputDialog({
+				title: "Test Command",
+				hint: "Command to verify each pass (e.g. bun test, npm test, pytest). Leave empty to skip.",
 				tui,
 				theme,
 				done,
-			),
+			}),
 	);
 
 	// Ask for max passes
@@ -81,15 +83,16 @@ async function handleRefactorCommand(
 	updateWidget(ctx, state);
 
 	// Send initial notification and prompt
-	sendInitialPrompt(pi, state, autoCommit, ctx);
+	sendInitialPrompt({ pi, state, autoCommit, ctx });
 }
 
-function sendInitialPrompt(
-	pi: ExtensionAPI,
-	state: RefactorState,
-	autoCommit: boolean,
-	ctx: import("@mariozechner/pi-coding-agent").ExtensionContext,
-) {
+function sendInitialPrompt(opts: {
+	pi: ExtensionAPI;
+	state: RefactorState;
+	autoCommit: boolean;
+	ctx: import("@mariozechner/pi-coding-agent").ExtensionContext;
+}) {
+	const { pi, state, autoCommit, ctx } = opts;
 	const testInfo = state.testCommand
 		? ` | tests: \`${state.testCommand}\``
 		: " | no test command";
@@ -122,18 +125,19 @@ function sendInitialPrompt(
 	);
 }
 
-export function registerCommands(
-	pi: ExtensionAPI,
-	getState: () => RefactorState,
-	setState: (state: RefactorState) => void,
-) {
+export function registerCommands(opts: {
+	pi: ExtensionAPI;
+	getState: () => RefactorState;
+	setState: (state: RefactorState) => void;
+}) {
+	const { pi, getState, setState } = opts;
 	// ── /refactor command ────────────────────────────────────────────────────
 
 	pi.registerCommand("refactor", {
 		description:
 			"Start an iterative refactoring/simplification pipeline on a target",
 		handler: async (args, ctx) => {
-			await handleRefactorCommand(pi, getState, setState, args, ctx);
+			await handleRefactorCommand({ pi, setState, args, ctx });
 		},
 	});
 

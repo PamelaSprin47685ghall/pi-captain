@@ -71,12 +71,13 @@ async function handleFileTool(event: ToolCallEvent, ctx: ExtensionContext) {
 }
 
 /** Check a single path reference for bash command protection */
-async function checkPathRef(
-	ref: string,
-	isReadOnly: boolean,
-	command: string,
-	ctx: ExtensionContext,
-) {
+async function checkPathRef(opts: {
+	ref: string;
+	isReadOnly: boolean;
+	command: string;
+	ctx: ExtensionContext;
+}) {
+	const { ref, isReadOnly, command, ctx } = opts;
 	const { action, reason } = isReadOnly
 		? classifyReadPath(ref)
 		: classifyWritePath(ref);
@@ -115,7 +116,7 @@ async function handleBashTool(event: ToolCallEvent, ctx: ExtensionContext) {
 	const isReadOnly = READ_ONLY_COMMANDS.test(command);
 
 	for (const ref of refs) {
-		const result = await checkPathRef(ref, isReadOnly, command, ctx);
+		const result = await checkPathRef({ ref, isReadOnly, command, ctx });
 		if (result) return result;
 	}
 

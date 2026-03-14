@@ -52,11 +52,12 @@ export function extractPipeline(
  * Load a TypeScript pipeline file, resolving captain aliases if present.
  * Registers the loaded pipeline into `pipelines` registry.
  */
-export async function loadTsPipelineFile(
-	filePath: string,
-	captainDir: string,
-	pipelines: Record<string, { spec: Runnable }>,
-): Promise<{ name: string; spec: Runnable; source: string }> {
+export async function loadTsPipelineFile(opts: {
+	filePath: string;
+	captainDir: string;
+	pipelines: Record<string, { spec: Runnable }>;
+}): Promise<{ name: string; spec: Runnable; source: string }> {
+	const { filePath, captainDir, pipelines } = opts;
 	const raw = await readFile(filePath, "utf8");
 	const needsAlias =
 		raw.includes(ALIAS_BRACKETS) || raw.includes(ALIAS_NO_BRACKETS);

@@ -1,3 +1,4 @@
+// @large-file: intentional consolidation of agent session creation and prompt execution into one module
 // ── Agent Session ─────────────────────────────────────────────────────────
 // Session creation and prompt execution against a pi agent.
 
@@ -59,17 +60,18 @@ export function resolveTools(
 }
 
 /** Create (or return a cached) DefaultResourceLoader for the given config. */
-async function getLoader(
-	ctx: RunCtx,
-	systemPrompt?: string,
-	extensions?: readonly string[],
-	skills?: readonly string[],
-): Promise<DefaultResourceLoader> {
+async function getLoader(opts: {
+	ctx: RunCtx;
+	systemPrompt?: string;
+	extensions?: readonly string[];
+	skills?: readonly string[];
+}): Promise<DefaultResourceLoader> {
+	const { ctx, systemPrompt, extensions, skills } = opts;
 	const agentDir = getAgentDir();
 	const key = JSON.stringify({
 		cwd: ctx.cwd,
 		agentDir,
-		systemPrompt,
+		systemPrompt: systemPrompt ?? null,
 		extensions: extensions ?? [],
 		skills: skills ?? [],
 	});
@@ -98,17 +100,17 @@ async function getLoader(
 /** Create a fresh agent session for the given step. */
 export async function createSession(
 	step: Step,
-	ctx: RunCtx,
-	model: Model<Api>,
+	opts: { ctx: RunCtx; model: Model<Api> },
 ): Promise<AgentSession> {
+	const { ctx, model } = opts;
 	const toolNames = step.tools ?? ["read", "bash", "edit", "write"];
 	const tools = resolveTools(toolNames, ctx.cwd);
-	const loader = await getLoader(
+	const loader = await getLoader({
 		ctx,
-		step.systemPrompt,
-		step.extensions,
-		step.skills,
-	);
+		systemPrompt: step.systemPrompt,
+		extensions: step.extensions,
+		skills: step.skills,
+	});
 	const { session } = await createAgentSession({
 		cwd: ctx.cwd,
 		model,
@@ -126,14 +128,15 @@ export async function createSession(
  * Send a prompt to a session and collect the output text.
  * Fires ctx callbacks for streaming, tool calls, and step hooks.
  */
-export async function runPrompt(
-	session: AgentSession,
-	prompt: string,
-	step: Step,
-	ctx: RunCtx,
-	_input: string,
-	_original: string,
-): Promise<{ output: string; toolCallCount: number }> {
+export async function runPrompt(opts: {
+	session: AgentSession;
+	prompt: string;
+	step: Step;
+	ctx: RunCtx;
+	input: string;
+	original: string;
+}): Promise<{ output: string; toolCallCount: number }> {
+	const { session, prompt, step, ctx } = opts;
 	const toolNames = step.tools ?? ["read", "bash", "edit", "write"];
 	session.setActiveToolsByName([...toolNames]);
 
