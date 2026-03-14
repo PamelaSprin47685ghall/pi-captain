@@ -7,12 +7,17 @@ import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
 } from "@mariozechner/pi-coding-agent";
+import type {
+	PipelineState,
+	RunCtx,
+	Runnable,
+	StepResult,
+} from "../core/types.js";
+import { describeRunnable } from "../core/types.js";
+import type { CaptainJob, CaptainState } from "../infra/state.js";
+import { clearWidget, updateWidget } from "../ui/widget.js";
 import { execute } from "./executor.js";
-import type { CaptainJob, CaptainState } from "./state.js";
 import { writePipelineLog } from "./tools.js";
-import type { PipelineState, RunCtx, Runnable, StepResult } from "./types.js";
-import { describeRunnable } from "./types.js";
-import { clearWidget, updateWidget } from "./widget.js";
 
 // ── Execution helpers ──────────────────────────────────────────────────────
 
@@ -357,8 +362,8 @@ export function registerCommands(pi: ExtensionAPI, state: CaptainState): void {
 				return;
 			}
 
-			const { skip } = await import("./presets.js");
-			const { full } = await import("./presets.js");
+			const { skip } = await import("../core/presets.js");
+			const { full } = await import("../core/presets.js");
 			const stepSpec = {
 				kind: "step" as const,
 				label: flags.label ?? "ad-hoc step",

@@ -3,7 +3,6 @@
 // All execution logic in one file: step, sequential, parallel, gates, retries.
 // No worktrees, no shared sessions — clean and composable.
 
-import { createSession, runPrompt } from "./session.js";
 import type {
 	Gate,
 	GateCtx,
@@ -16,8 +15,9 @@ import type {
 	Step,
 	StepResult,
 	Transform,
-} from "./types.js";
-import { resolveModel } from "./types.js";
+} from "../core/types.js";
+import { resolveModel } from "../core/types.js";
+import { createSession, runPrompt } from "../infra/session.js";
 
 const MAX_RETRIES = 10;
 const DEFAULT_TOOLS = ["read", "bash", "edit", "write"];

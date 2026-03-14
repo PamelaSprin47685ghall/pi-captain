@@ -1,29 +1,30 @@
 // NEED USER APPROVAL FOR ANY CHANGE
-// ── Architecture: Flat Module Structure — Dependency Boundaries ───────────
-// Enforces structural invariants for the flat (non-subdirectory) captain layout.
+// ── Architecture: Layered Folder Structure — Dependency Boundaries ─────────
+// Enforces the Functional Core / Imperative Shell architecture from
+// ~/.pi/Basic_knowledge.md.
 //
-// Rules:
-//   executor.ts  → must NOT import from tools.ts, commands.ts, or widget.ts
-//   types.ts     → must NOT import from any other captain file
-//   presets.ts   → must only import from types.ts (among captain files)
+// Layer rules (Impureim Sandwich):
+//   core/   → PURE — must NOT import from infra/, shell/, or ui/
+//   infra/  → adapters — must NOT import from shell/ or ui/
+//   ui/     → TUI — must NOT import from infra/ or shell/
+//   shell/  → coordinators — may import from core/, infra/, and ui/
 //
 // Run with: bun test extensions/captain/arch.test.ts
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = new URL(".", import.meta.url).pathname;
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-/** Extract all relative import specifiers from a TS source file (static, no AST) */
+/** Extract all relative import specifiers from a TS source file (static, no AST). */
 function relativeImports(filePath: string): string[] {
 	const src = readFileSync(filePath, "utf8");
 	const hits: string[] = [];
 	for (const line of src.split("\n")) {
 		const trimmed = line.trimStart();
-		// Skip comment lines
 		if (trimmed.startsWith("//") || trimmed.startsWith("*")) continue;
 		for (const m of trimmed.matchAll(/(?:from|import)\s+["']([^"']+)["']/g)) {
 			const p = m[1];
@@ -33,82 +34,85 @@ function relativeImports(filePath: string): string[] {
 	return hits;
 }
 
-/** Resolve a relative import specifier to just the basename (no ext) */
-function basename(imp: string): string {
-	return (imp.split("/").pop() ?? "").replace(/\.(js|ts)$/, "");
+/** Collect all source files in a layer folder (non-recursive, exclude test files). */
+function layerFiles(layer: string): string[] {
+	const dir = join(ROOT, layer);
+	try {
+		return readdirSync(dir)
+			.filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
+			.map((f) => join(dir, f));
+	} catch {
+		return [];
+	}
 }
 
-function importsOf(file: string): string[] {
-	return relativeImports(join(ROOT, file)).map(basename);
+/** Collect relative imports that cross into a forbidden layer. */
+function crossLayerImports(
+	filePath: string,
+	forbidden: readonly string[],
+): string[] {
+	return relativeImports(filePath).filter((imp) =>
+		forbidden.some(
+			(layer) => imp.includes(`../${layer}/`) || imp.includes(`/${layer}/`),
+		),
+	);
 }
 
-/** All captain source files (flat, same dir) — excluding test files */
-const CAPTAIN_FILES = [
-	"api.ts",
-	"commands.ts",
-	"executor.ts",
-	"generator.ts",
-	"loader.ts",
-	"presets.ts",
-	"session.ts",
-	"state.ts",
-	"tools.ts",
-	"types.ts",
-	"widget.ts",
-];
-const CAPTAIN_BASENAMES = new Set(
-	CAPTAIN_FILES.map((f) => f.replace(/\.ts$/, "")),
-);
+// ── core/ — pure, zero side-effects ──────────────────────────────────────
 
-function captainImportsOf(file: string): string[] {
-	return importsOf(file).filter((b) => CAPTAIN_BASENAMES.has(b));
-}
+describe("core/ — pure layer boundaries", () => {
+	const FORBIDDEN: readonly string[] = ["infra", "shell", "ui"];
 
-// ── rules ──────────────────────────────────────────────────────────────────
+	for (const file of layerFiles("core")) {
+		test(`${file.split("/").pop()} must not import from infra/, shell/, or ui/`, () => {
+			const violations = crossLayerImports(file, FORBIDDEN);
+			expect(violations).toEqual([]);
+		});
+	}
+});
 
-describe("Flat module structure — dependency boundaries", () => {
-	test("executor.ts must not import from tools.ts, commands.ts, or widget.ts", () => {
+// ── infra/ — side-effectful adapters ─────────────────────────────────────
+
+describe("infra/ — adapter layer boundaries", () => {
+	const FORBIDDEN: readonly string[] = ["shell", "ui"];
+
+	for (const file of layerFiles("infra")) {
+		test(`${file.split("/").pop()} must not import from shell/ or ui/`, () => {
+			const violations = crossLayerImports(file, FORBIDDEN);
+			expect(violations).toEqual([]);
+		});
+	}
+});
+
+// ── ui/ — TUI rendering ───────────────────────────────────────────────────
+
+describe("ui/ — presentation layer boundaries", () => {
+	const FORBIDDEN: readonly string[] = ["infra", "shell"];
+
+	for (const file of layerFiles("ui")) {
+		test(`${file.split("/").pop()} must not import from infra/ or shell/`, () => {
+			const violations = crossLayerImports(file, FORBIDDEN);
+			expect(violations).toEqual([]);
+		});
+	}
+});
+
+// ── shell/ — coordinators (may use core, infra, ui) ──────────────────────
+
+describe("shell/ — coordinator layer: executor must not import tools or commands", () => {
+	test("executor.ts must not import from tools.ts or commands.ts", () => {
+		const _src = readFileSync(join(ROOT, "shell", "executor.ts"), "utf8");
+		const localImports = relativeImports(join(ROOT, "shell", "executor.ts"))
+			.filter((imp) => imp.startsWith("."))
+			.map(
+				(imp) =>
+					imp
+						.split("/")
+						.pop()
+						?.replace(/\.(js|ts)$/, "") ?? "",
+			);
 		const forbidden = new Set(["tools", "commands", "widget"]);
-		const violations = captainImportsOf("executor.ts").filter((b) =>
-			forbidden.has(b),
-		);
-		expect(violations).toEqual([]);
-	});
-
-	test("types.ts must not import from any other captain file", () => {
-		const violations = captainImportsOf("types.ts");
-		expect(violations).toEqual([]);
-	});
-
-	test("presets.ts must only import types.ts among captain files", () => {
-		const allowed = new Set(["types"]);
-		const violations = captainImportsOf("presets.ts").filter(
-			(b) => !allowed.has(b),
-		);
-		expect(violations).toEqual([]);
-	});
-
-	test("session.ts must not import from commands.ts or widget.ts", () => {
-		const forbidden = new Set(["commands", "widget"]);
-		const violations = captainImportsOf("session.ts").filter((b) =>
-			forbidden.has(b),
-		);
-		expect(violations).toEqual([]);
-	});
-
-	test("loader.ts must not import from commands.ts, tools.ts, or widget.ts", () => {
-		const forbidden = new Set(["commands", "tools", "widget"]);
-		const violations = captainImportsOf("loader.ts").filter((b) =>
-			forbidden.has(b),
-		);
-		expect(violations).toEqual([]);
-	});
-
-	test("api.ts must only import from presets.ts and types.ts among captain files", () => {
-		const allowed = new Set(["presets", "types"]);
-		const violations = captainImportsOf("api.ts").filter(
-			(b) => !allowed.has(b),
-		);
+		const violations = localImports.filter((b) => forbidden.has(b));
 		expect(violations).toEqual([]);
 	});
 });

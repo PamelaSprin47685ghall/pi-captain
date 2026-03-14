@@ -30,7 +30,7 @@ export {
 	user,
 	vote,
 	warn,
-} from "./presets.js";
+} from "./core/presets.js";
 // ── Types ──────────────────────────────────────────────────────────────────
 export type {
 	Gate,
@@ -48,4 +48,4 @@ export type {
 	Step,
 	StepHooks,
 	Transform,
-} from "./types.js";
+} from "./core/types.js";

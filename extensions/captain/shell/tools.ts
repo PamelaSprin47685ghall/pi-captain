@@ -17,12 +17,12 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import type { PipelineState, RunCtx, StepResult } from "../core/types.js";
+import { describeRunnable, statusIcon } from "../core/types.js";
+import { generatePipeline } from "../infra/generator.js";
+import type { CaptainState } from "../infra/state.js";
+import { clearWidget, updateWidget } from "../ui/widget.js";
 import { execute } from "./executor.js";
-import { generatePipeline } from "./generator.js";
-import type { CaptainState } from "./state.js";
-import type { PipelineState, RunCtx, StepResult } from "./types.js";
-import { describeRunnable, statusIcon } from "./types.js";
-import { clearWidget, updateWidget } from "./widget.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 

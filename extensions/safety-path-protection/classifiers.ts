@@ -17,6 +17,10 @@ export const NODE_MODULES_REF_RE =
 	/(^|[^A-Za-z0-9._-])(node_modules(?:[/\\][^\s]*)?)(\s|$|[;&|<>])/g;
 export const ENV_REF_RE = /(?:^|\s)(\.env(?:\.\w+)?)(?:\s|$|[;&|<>])/g;
 
+// node_modules sub-paths explicitly allowed for reads (e.g. browsing pi API docs/types)
+export const ALLOWED_READ_NODE_MODULES =
+	/(?:^|[/\\])node_modules[/\\]@mariozechner[/\\]/;
+
 // Read-only bash commands that shouldn't trigger write protection
 export const READ_ONLY_COMMANDS =
 	/^\s*(cat|less|more|head|tail|grep|rg|ag|find|ls|tree|file|stat|wc|diff)\b/;
@@ -117,6 +121,11 @@ export function classifyReadPath(filePath: string): {
 } {
 	const resolved = resolve(filePath);
 
+	// Explicitly allow reading @mariozechner packages — quick API/type/doc lookup
+	if (ALLOWED_READ_NODE_MODULES.test(resolved)) {
+		return { action: "allow", reason: "" };
+	}
+
 	// Only .git/ internals are blocked for reads
 	if (GIT_DIR.test(resolved)) {
 		return {
@@ -144,10 +153,12 @@ export function extractProtectedRefs(command: string): string[] {
 		match = GIT_REF_RE.exec(command);
 	}
 
-	// Search for node_modules references
+	// Search for node_modules references (skip explicitly allowed sub-paths)
 	match = NODE_MODULES_REF_RE.exec(command);
 	while (match !== null) {
-		if (match[2]) refs.add(match[2]);
+		if (match[2] && !ALLOWED_READ_NODE_MODULES.test(match[2])) {
+			refs.add(match[2]);
+		}
 		match = NODE_MODULES_REF_RE.exec(command);
 	}
 

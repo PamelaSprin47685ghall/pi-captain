@@ -9,9 +9,9 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { basename, join, resolve } from "node:path";
+import type { PipelineState, Runnable } from "../core/types.js";
+import { describeRunnable } from "../core/types.js";
 import { loadTsPipelineFile } from "./loader.js";
-import type { PipelineState, Runnable } from "./types.js";
-import { describeRunnable } from "./types.js";
 
 // ── FsPort (injectable for tests) ─────────────────────────────────────────
 

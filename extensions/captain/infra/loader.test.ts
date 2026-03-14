@@ -1,22 +1,28 @@
-// ── Integration tests for loader.ts::loadTsPipelineFile ───────────────────
-// These tests write real .ts pipeline files to disk, call loadTsPipelineFile,
-// and assert the returned Runnable. No real LLM calls or network needed.
+// ── Tests for infra/loader.ts ─────────────────────────────────────────────
+// Covers: loadTsPipelineFile (integration — real files on disk)
+//         resolveAliases and extractPipeline (unit)
 //
-// Each test uses a unique filename to prevent Bun module-cache collisions.
-//
-// Run with: bun test extensions/captain/loader.test.ts
+// Run with: bun test extensions/captain/infra/loader.test.ts
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { loadTsPipelineFile } from "./loader.js";
-import type { Runnable } from "./types.js";
+import { full, skip } from "../core/presets.js";
+import type { Runnable } from "../core/types.js";
+import {
+	extractPipeline,
+	loadTsPipelineFile,
+	resolveAliases,
+} from "./loader.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-/** Absolute path to extensions/captain/ — used as captainDir for alias tests. */
-const CAPTAIN_DIR = resolve(new URL(".", import.meta.url).pathname);
+/**
+ * Absolute path to extensions/captain/ root — used as captainDir for alias
+ * tests (mirrors production: CaptainState is initialised with the captain root).
+ */
+const CAPTAIN_DIR = resolve(new URL("../", import.meta.url).pathname);
 
 /** Monotonically-increasing counter to guarantee unique filenames. */
 let seq = 0;
@@ -27,7 +33,7 @@ function tmpTs(label: string): string {
 	);
 }
 
-/** Files to clean up after each test (in addition to the auto-cleanup inside loadTsPipelineFile). */
+/** Files to clean up after each test (in addition to auto-cleanup inside loadTsPipelineFile). */
 const toCleanup: string[] = [];
 afterEach(async () => {
 	for (const p of toCleanup.splice(0)) {
@@ -79,7 +85,7 @@ const INVALID_SRC = `\
 export const notAPipeline = { name: "foo", value: 42 };
 `;
 
-// ── Tests: direct path (no alias rewriting) ────────────────────────────────
+// ── loadTsPipelineFile — direct path ──────────────────────────────────────
 
 describe("loadTsPipelineFile — direct path", () => {
 	test("loads a sequential pipeline and registers it in pipelines map", async () => {
@@ -96,11 +102,9 @@ describe("loadTsPipelineFile — direct path", () => {
 
 		expect(result.spec.kind).toBe("sequential");
 		expect(result.source).toBe(path);
-		// name is the basename without extension
 		expect(result.name).toBe(
 			(path.split("/").pop() ?? "").replace(/\.ts$/, ""),
 		);
-		// registry entry is set
 		expect(pipelines[result.name]).toBeDefined();
 		expect(pipelines[result.name].spec.kind).toBe("sequential");
 	});
@@ -190,16 +194,13 @@ describe("loadTsPipelineFile — direct path", () => {
 
 		await loadTsPipelineFile({ filePath: path, captainDir: "", pipelines });
 
-		// The pre-existing entry must still be there
 		expect(pipelines["other-pipeline"]).toBeDefined();
 		expect(pipelines["other-pipeline"].spec).toBe(existing);
 	});
 
 	test(".js extension is stripped from pipeline name", async () => {
-		// Simulate a .js file (unusual but loader supports it)
 		const jsPath = tmpTs("jsext").replace(/\.ts$/, ".js");
 		toCleanup.push(jsPath);
-		// Write pure JS — no TypeScript syntax so Bun can import as JS
 		const jsSrc = `export const pipeline = { kind: "sequential", steps: [], gate: undefined, onFail: undefined, transform: undefined };`;
 		await writeFile(jsPath, jsSrc, "utf8");
 
@@ -215,15 +216,14 @@ describe("loadTsPipelineFile — direct path", () => {
 	});
 });
 
-// ── Tests: alias path (alias rewriting triggered) ──────────────────────────
+// ── loadTsPipelineFile — alias rewriting ──────────────────────────────────
 
 describe("loadTsPipelineFile — alias rewriting", () => {
 	test("resolves <captain>/ alias imports and loads successfully", async () => {
-		// The file imports from the real captain presets via the alias.
-		// After rewriting, the import will point to CAPTAIN_DIR/presets.js
-		// which Bun resolves to presets.ts — so full is available.
+		// Pipeline imports presets via the alias — after rewriting it resolves to
+		// CAPTAIN_DIR/core/presets.js (the captain root, one level above infra/).
 		const aliasSrc = `\
-import { full } from "<captain>/presets.js";
+import { full } from "<captain>/core/presets.js";
 export const pipeline = {
   kind: "step" as const,
   label: "alias-test",
@@ -248,14 +248,13 @@ export const pipeline = {
 		expect(result.spec.kind).toBe("step");
 		if (result.spec.kind === "step") {
 			expect(result.spec.label).toBe("alias-test");
-			// transform should be the real `full` function
 			expect(typeof result.spec.transform).toBe("function");
 		}
 	});
 
 	test("resolves captain/ alias (no brackets) and loads successfully", async () => {
 		const aliasSrc = `\
-import { skip } from "captain/presets.js";
+import { skip } from "captain/core/presets.js";
 export const pipeline = {
   kind: "step" as const,
   label: "no-brackets",
@@ -285,11 +284,8 @@ export const pipeline = {
 	});
 
 	test("cleans up the temp file after successful alias import", async () => {
-		// We can't easily intercept the tmp path, but we verify no .ts junk
-		// is left in tmpdir by checking that load succeeds without throwing.
-		// A throw during cleanup would surface here.
 		const aliasSrc = `\
-import { full } from "<captain>/presets.js";
+import { full } from "<captain>/core/presets.js";
 export const pipeline = {
   kind: "sequential" as const,
   steps: [],
@@ -309,5 +305,86 @@ export const pipeline = {
 				pipelines: {},
 			}),
 		).resolves.toBeDefined();
+	});
+});
+
+// ── resolveAliases (unit) ─────────────────────────────────────────────────
+
+describe("resolveAliases", () => {
+	const captainDir = "/abs/path/to/captain";
+
+	test("replaces <captain>/ alias", () => {
+		const src = 'import { retry } from "<captain>/core/presets.js";';
+		expect(resolveAliases(src, captainDir)).toBe(
+			`import { retry } from "${captainDir}/core/presets.js";`,
+		);
+	});
+
+	test("replaces captain/ alias (no angle brackets)", () => {
+		const src = 'import { concat } from "captain/core/presets.js";';
+		expect(resolveAliases(src, captainDir)).toBe(
+			`import { concat } from "${captainDir}/core/presets.js";`,
+		);
+	});
+
+	test("leaves non-alias imports untouched", () => {
+		const src = 'import { foo } from "./local.js";';
+		expect(resolveAliases(src, captainDir)).toBe(src);
+	});
+
+	test("replaces multiple occurrences", () => {
+		const src = [
+			'import { a } from "<captain>/core/presets.js";',
+			'import { b } from "captain/core/types.js";',
+		].join("\n");
+		const result = resolveAliases(src, captainDir);
+		expect(result).toContain(`"${captainDir}/core/presets.js"`);
+		expect(result).toContain(`"${captainDir}/core/types.js"`);
+	});
+});
+
+// ── extractPipeline (unit) ────────────────────────────────────────────────
+
+describe("extractPipeline", () => {
+	const seq: Runnable = {
+		kind: "sequential",
+		steps: [],
+		gate: undefined,
+		onFail: undefined,
+		transform: undefined,
+	};
+	const step: Runnable = {
+		kind: "step",
+		label: "x",
+		prompt: "y",
+		tools: [],
+		gate: undefined,
+		onFail: skip,
+		transform: full,
+	};
+
+	test("returns top-level pipeline export", () => {
+		const mod = { pipeline: seq };
+		expect(extractPipeline(mod as never)).toBe(seq);
+	});
+
+	test("returns pipeline from default export", () => {
+		const mod = { default: { pipeline: seq } };
+		expect(extractPipeline(mod as never)).toBe(seq);
+	});
+
+	test("falls back to any named export with a valid kind", () => {
+		const mod = { myStep: step };
+		expect(extractPipeline(mod as never)).toBe(step);
+	});
+
+	test("returns undefined when no valid export found", () => {
+		const mod = { somethingElse: { name: "not a pipeline" } };
+		expect(extractPipeline(mod as never)).toBeUndefined();
+	});
+
+	test("skips default key during fallback scan", () => {
+		const mod = { default: step };
+		expect(extractPipeline(mod as never)).toBeUndefined();
 	});
 });

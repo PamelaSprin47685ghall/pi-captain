@@ -5,7 +5,6 @@
 
 import { describe, expect, test } from "bun:test";
 import type { Api, Model } from "@mariozechner/pi-ai";
-import { execute } from "./executor.js";
 import {
 	concat,
 	fallback,
@@ -14,7 +13,7 @@ import {
 	retry,
 	skip,
 	warn,
-} from "./presets.js";
+} from "../core/presets.js";
 import type {
 	ModelRegistryLike,
 	Parallel,
@@ -23,7 +22,8 @@ import type {
 	SessionFactory,
 	Step,
 	StepResult,
-} from "./types.js";
+} from "../core/types.js";
+import { execute } from "./executor.js";
 
 // ── Test helpers ──────────────────────────────────────────────────────────
 
@@ -667,7 +667,7 @@ describe("execute — unknown runnable kind", () => {
 		// Cast to bypass TypeScript type checking
 		const unknown = {
 			kind: "bogus",
-		} as unknown as import("./types.js").Runnable;
+		} as unknown as import("../core/types.js").Runnable;
 		const { output } = await execute(unknown, {
 			input: "in",
 			original: "orig",

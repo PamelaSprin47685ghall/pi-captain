@@ -18,7 +18,7 @@ import {
 	SessionManager,
 	SettingsManager,
 } from "@mariozechner/pi-coding-agent";
-import type { RunCtx, Step } from "./types.js";
+import type { RunCtx, Step } from "../core/types.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: tool schema types vary per tool
 type AnyAgentTool = AgentTool<any>;

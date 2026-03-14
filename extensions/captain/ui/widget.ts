@@ -4,7 +4,7 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Text, truncateToWidth } from "@mariozechner/pi-tui";
-import type { PipelineState, Runnable, StepResult } from "./types.js";
+import type { PipelineState, Runnable, StepResult } from "../core/types.js";
 
 // ── Step line rendering ───────────────────────────────────────────────────
 

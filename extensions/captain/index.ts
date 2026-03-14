@@ -4,9 +4,9 @@
 
 import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { registerCommands } from "./commands.js";
-import { CaptainState } from "./state.js";
-import { registerTools } from "./tools.js";
+import { CaptainState } from "./infra/state.js";
+import { registerCommands } from "./shell/commands.js";
+import { registerTools } from "./shell/tools.js";
 
 const baseDir = (() => {
 	try {
