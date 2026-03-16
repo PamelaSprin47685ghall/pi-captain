@@ -1,8 +1,8 @@
 // index.ts — General-purpose agent loop extension
 // Supports 3 modes:
-//   /loop goal <description>     — repeat until the LLM declares the goal met
-//   /loop passes <N> <task>      — repeat exactly N times
-//   /loop pipeline <s1|s2|s3>    — run stages sequentially, stop after last
+//   /repeat goal <description>     — repeat until the LLM declares the goal met
+//   /repeat passes <N> <task>      — repeat exactly N times
+//   /repeat pipeline <s1|s2|s3>    — run stages sequentially, stop after last
 //
 // The LLM gets a `loop_control` tool to signal progress/completion.
 // Ctrl+Shift+X to abort at any time.
@@ -83,10 +83,10 @@ export default function (pi: ExtensionAPI) {
 		};
 	});
 
-	// ── /loop command — start a loop ─────────────────────────────────────
-	pi.registerCommand("loop", {
+	// ── /repeat command — start a loop ───────────────────────────────────
+	pi.registerCommand("repeat", {
 		description:
-			"Start a loop. Usage: /loop goal <desc> | /loop passes <N> <task> | /loop pipeline <s1|s2|s3> <goal>",
+			"Start a loop. Usage: /repeat goal <desc> | /repeat passes <N> <task> | /repeat pipeline <s1|s2|s3> <goal>",
 		getArgumentCompletions: () => [
 			{
 				value: "goal ",
@@ -107,7 +107,7 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			if (!args?.trim()) {
 				ctx.ui.notify(
-					"Usage:\n  /loop goal <description>\n  /loop passes <N> <task>\n  /loop pipeline <s1|s2|s3> <goal>",
+					"Usage:\n  /repeat goal <description>\n  /repeat passes <N> <task>\n  /repeat pipeline <s1|s2|s3> <goal>",
 					"info",
 				);
 				return;
@@ -146,8 +146,8 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	// ── /loop-stop command ───────────────────────────────────────────────
-	pi.registerCommand("loop-stop", {
+	// ── /repeat-stop command ─────────────────────────────────────────────
+	pi.registerCommand("repeat-stop", {
 		description: "Stop the active loop",
 		handler: async (_args, ctx) => {
 			if (!state.active) {

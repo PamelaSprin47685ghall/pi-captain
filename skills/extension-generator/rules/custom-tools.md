@@ -4,6 +4,8 @@ Tools registered via `pi.registerTool()` appear in the LLM's system prompt and c
 
 ⚠️ **Gotcha:** When using `String.repeat(n)`, always clamp `n` to `>= 0`. Values derived from API responses (e.g. `ctx.getContextUsage()`) can produce negative counts and crash with `Invalid count value`.
 
+⚠️ **Gotcha:** Never put a bare `*/` inside a `/** ... */` JSDoc block — it prematurely closes the comment and causes `tsc` syntax errors. Replace any cron example like `*/30 * * * *` with `* /30 * * * *` (with a space) or use a single-line `//` comment instead.
+
 ## Avoid
 
 ```typescript

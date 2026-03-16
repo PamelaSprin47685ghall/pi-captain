@@ -49,21 +49,41 @@ def generate_hex_id():
 
 
 def estimate_node_size(node):
-    """Estimate width and height from content length."""
+    """Estimate width and height from content length.
+
+    Sizing rule: budget ~50px per line. Width drives wrapping — use 600-700px
+    for any node with a heading or prose, 100-250px only for pure labels.
+    A ## heading counts as 1.5 lines; each code block adds ~80px.
+    """
     if node.get("type") == "group":
         return node.get("width", 440), node.get("height", 340)
     if node.get("type") in ("file", "link"):
         return node.get("width", 300), node.get("height", 100)
 
     content = node.get("content", "")
-    lines = content.count("\n") + 1
+    all_lines = content.splitlines()
+    heading_count = sum(1 for l in all_lines if l.startswith("##"))
+    blank_count   = sum(1 for l in all_lines if l.strip() == "")
+    code_block_count = content.count("```") // 2
+    # Blank lines render as small paragraph gaps (~0.3 lines), not full rows
+    content_lines = len(all_lines) + 1 - blank_count * 0.7
+    effective_lines = content_lines + 0.5 * heading_count + 1.5 * code_block_count
 
-    if lines <= 2:
-        w, h = 250, 120  # small
-    elif lines <= 8:
-        w, h = 400, max(200, lines * 60 + 40)  # medium
+    if lines == 1 and not content.startswith("#"):
+        # Pure label — single word or short phrase
+        w, h = 250, 60
+    elif effective_lines <= 3:
+        # Card: heading + one body sentence
+        w, h = 700, max(140, round(effective_lines * 50))
+    elif effective_lines <= 7:
+        # Detail: heading + list
+        w, h = 700, max(200, round(effective_lines * 50))
+    elif effective_lines <= 11:
+        # Block: dense list or multi-step
+        w, h = 600, max(280, round(effective_lines * 50))
     else:
-        w, h = 420, max(300, lines * 50 + 40)  # large
+        # Hero / large block
+        w, h = 800, max(320, round(effective_lines * 48))
 
     return node.get("width", w), node.get("height", h)
 

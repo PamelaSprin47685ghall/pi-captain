@@ -1,0 +1,18 @@
+{
+	"name": "pi-voice",
+	"version": "0.1.0",
+	"description": "On-device voice input via whisper-cpp. Press Ctrl+Shift+V or run /voice to record and transcribe speech — no API key needed.",
+	"keywords": [
+		"pi-package"
+	],
+	"license": "MIT",
+	"pi": {
+		"extensions": [
+			"."
+		]
+	},
+	"peerDependencies": {
+		"@mariozechner/pi-coding-agent": "*",
+		"@mariozechner/pi-tui": "*"
+	}
+}

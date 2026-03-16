@@ -16,3 +16,6 @@ __pycache__/
 .pi/
 .vscode/
 .captain/
+
+# JSON Canvas samples collected from GitHub (not part of the skill source)
+skills/json-canvas/samples/

@@ -13,6 +13,44 @@ description: >
 
 # JSON Canvas
 
+## Script Suite
+
+Three scripts live in `scripts/`:
+
+| Script | Purpose | Key options |
+|--------|---------|-------------|
+| `generate-canvas.py` | Generate a new `.canvas` from an intermediate JSON description | `--layout`, `--direction`, `--spacing` |
+| `validate-canvas.py` | Check a `.canvas` file for 18 structural, reference, geometry, and content issues | `--json` (machine output), `-q` (quiet) |
+| `fix-canvas.py` | Auto-repair geometry and spec issues in-place (creates `.bak`) | `--dry-run`, `-o FILE` |
+
+**Recommended workflow**:
+```
+# Generate → validate → fix if needed
+python3 scripts/generate-canvas.py input.json -o out.canvas
+python3 scripts/validate-canvas.py out.canvas
+python3 scripts/fix-canvas.py out.canvas --dry-run   # preview fixes
+python3 scripts/fix-canvas.py out.canvas             # apply fixes (saves .bak)
+python3 scripts/validate-canvas.py out.canvas        # confirm clean
+```
+
+**What `validate-canvas.py` checks**:
+- `S` Structure: JSON validity, required fields, valid type/color/side/end values, positive dimensions
+- `R` References: no duplicate IDs, edge refs point to real nodes, 16-char hex IDs
+- `G` Geometry: group z-order (groups before children), children overflow bounds, empty groups, exact overlaps
+- `C` Content: text too tall for content estimate, Unicode in fenced code blocks
+
+**What `fix-canvas.py` repairs** (F1–F9):
+- `F1/F2` Missing or duplicate IDs (regenerates, updates edge refs)
+- `F3` Group z-order (moves groups before their children)
+- `F4` Group bounds (expands groups that don't fully contain their children — never shrinks)
+- `F5` Edge sides (recomputes `fromSide`/`toSide` from centre-to-centre vector)
+- `F6` Edge ends (adds `toEnd:"arrow"` when both end fields absent)
+- `F7` Node min-size (ensures width/height ≥ 60px)
+- `F8` Text node height (expands when < 60% of content estimate)
+- `F9` Unicode in code blocks (replaces with ASCII equivalents)
+
+---
+
 ## Two-Pass Architecture
 
 This skill uses a **two-pass approach** for canvas generation:
@@ -72,6 +110,10 @@ The script outputs valid `.canvas` JSON with computed IDs, coordinates, sizing, 
 
 **Node Types**: `text` (markdown content, most common), `group` (visual container with `label`, optional `background`/`backgroundStyle`), `file` (vault-relative path via `file` property, optional `subpath`), `link` (URL via `url` property).
 
+- **`file` subpath format**: `#heading-name` links to a heading; `#^block-id` links to a block reference. Example: `"subpath": "#^b6e0ad"` or `"subpath": "#Introduction"`.
+- **`group` background**: `"background": "path/to/image.png"` fills the group with an image. Real-world use: iceberg diagram with photo as group background, text nodes floating on top.
+- **Colors are optional** — 28% of real-world canvases use no colors at all. Use color to add semantic hierarchy; don't add it just to add it.
+
 **Color Presets**: Numeric strings `"1"` through `"6"` map to actual colors. Hex strings (e.g., `"#FF0000"`) are also valid.
 
 | Preset | Color | Suggested use |
@@ -87,22 +129,41 @@ Assign colors by semantic role, not arbitrarily. Use `## Title` (not `# Title`) 
 
 **⚠ Code Block Content Must Be ASCII-Only**: Unicode characters (em dash `—`, arrows `→`, emoji, curly quotes) inside a fenced code block cause VSCode canvas extensions to show "Error parsing" on that node. Unicode is fine in prose, headings, and bullet points — only the content *between* ` ``` ` fences must be ASCII. Use `--` for em dash, `->` for arrows, `...` for ellipsis. See `rules/code-block-ascii-only.md`.
 
-**Node Sizing Tiers** (from [Obsidian's official sample](https://github.com/obsidianmd/jsoncanvas/blob/main/sample.canvas)):
+**Node Sizing Tiers** — budget **~50 px per line**. Set width first (it drives wrapping), then calculate height from the actual line count at that width:
 
 | Tier | Width | Height | Use for |
 |------|-------|--------|---------|
-| Small | 250 | 120 | Labels, short text, file refs |
-| Medium | 400 | 300 | Paragraphs, lists, code blocks |
-| Large | 570 | 500 | Long-form content, embedded files |
+| Label | 100–250 | 60 | Single word or short phrase — no heading |
+| Card | 600–700 | 140–160 | `## Heading` + one sentence body (2 lines) — **most common content node** |
+| Detail | 600–700 | 200–280 | `## Heading` + 3–6 bullet or list lines |
+| Block | 400–700 | 280–380 | 7–10 lines: dense lists, multi-step instructions |
+| Hero | 700–900 | 240–320 | Intro node with prose + code block |
 
-Content-based sizing heuristic: `height = max(100, lines * 60 + 40)`, `width = 300-420`. Center layouts around origin (negative coordinates are expected). See `rules/size-nodes-for-content.md`.
+⚠️ **Card tier is the most under-sized mistake**: `## Heading` alone is ~50 px, one body sentence adds another ~50 px → minimum **140 px**. Using 80–100 px clips the second line.
 
-**Edge Defaults**: Per the [spec](https://jsoncanvas.org/spec/1.0/), `fromEnd` defaults to `"none"` and `toEnd` defaults to `"arrow"`. Omitting both produces a standard directional arrow. `fromSide`/`toSide` are optional -- when omitted, Obsidian auto-routes. Set them explicitly only for structured layouts.
+Formula: blank lines count as 0.3 lines (paragraph gap, not a full row), `##` headings add 0.5 lines, each code block adds 1.5 lines — then `height = max(60, effective_lines × 50)`. Use **600–700 px width** for any node with prose or a heading; **100–300 px** only for pure labels. See `rules/size-nodes-for-content.md`.
+
+**Edge Defaults**: Per the [spec](https://jsoncanvas.org/spec/1.0/), `fromEnd` defaults to `"none"` and `toEnd` defaults to `"arrow"`. Omitting both produces a standard directional arrow. `fromSide`/`toSide` are optional -- when omitted, Obsidian auto-routes. Set them explicitly only for structured layouts. `fromEnd: "arrow"` (bidirectional) is rare in real files — only ~0.3% of edges use it.
+
+Edges support `color` (same preset/hex as nodes) to visually group edge types. `styleAttributes: {"path": "short-dashed"}` makes a dashed line; omit or use `{}` for solid.
 
 ```json
 { "id": "e1a2b3c4d5e6f7g8", "fromNode": "nodeA", "toNode": "nodeB" }
 { "id": "e2b3c4d5e6f7g8h9", "fromNode": "nodeA", "toNode": "nodeB", "fromEnd": "arrow", "toEnd": "arrow", "label": "bidirectional" }
+{ "id": "e3c4d5e6f7g8h9i0", "fromNode": "nodeA", "toNode": "nodeB", "color": "5", "label": "Forward Ref", "styleAttributes": {"path": "short-dashed"} }
 ```
+
+**Kanban Pattern** (no edges needed): Represent a kanban board as columns of text nodes. Use a header node per column (with `### \`Column Name\`` markdown) and card nodes below it. Color encodes status — a common convention from real files:
+
+| Color | Typical kanban meaning |
+|-------|----------------------|
+| `"4"` green | Sprint ready / To Do |
+| `"3"` yellow | In Progress |
+| `"2"` orange | Doing / Active |
+| `"1"` red | Blocked / Urgent |
+| `"5"` cyan | Backlog |
+
+No edges are needed — spatial position communicates the column membership. See `rules/choose-layout-strategy.md` for manual layout.
 
 
 ## Quick Reference
@@ -113,11 +174,15 @@ Content-based sizing heuristic: `height = max(100, lines * 60 + 40)`, `width = 3
 | Group node | `id`, `type`, `x`, `y`, `width`, `height` | `color`, `label`, `background`, `backgroundStyle` |
 | File node | `id`, `type`, `x`, `y`, `width`, `height`, `file` | `color`, `subpath` |
 | Link node | `id`, `type`, `x`, `y`, `width`, `height`, `url` | `color` |
-| Edge | `id`, `fromNode`, `toNode` | `fromSide`, `toSide`, `fromEnd`, `toEnd`, `label`, `color` |
+| Edge | `id`, `fromNode`, `toNode` | `fromSide`, `toSide`, `fromEnd`, `toEnd`, `label`, `color`, `styleAttributes`, `fromFloating`, `toFloating` |
 | Side values | `"top"`, `"bottom"`, `"left"`, `"right"` | |
 | Color values | Presets: `"1"` red, `"2"` orange, `"3"` yellow, `"4"` green, `"5"` cyan, `"6"` purple | Hex: `"#RRGGBB"` |
 | End values | `"none"`, `"arrow"` | Defaults: `fromEnd`=none, `toEnd`=arrow |
 | Background styles | `"cover"`, `"ratio"`, `"repeat"` | For group `backgroundStyle` |
+| Edge path styles | `styleAttributes: {"path": "short-dashed"}` | Dashed edge style; `{}` = solid (default) |
+| Floating anchors | `fromFloating: false` / `toFloating: false` | When set alongside explicit `fromSide`/`toSide`, pins the anchor to center of that side rather than letting it slide |
+| File subpath | `#heading-name` or `#^block-id` | Links to a heading or block ref within the file |
+| Edge labels | Any string, may contain `\n` for multi-line | Rendered as a label mid-edge |
 
 
 ## Reference Files
@@ -132,3 +197,5 @@ Consult these when you need specific guidance:
 - `rules/layout-for-readability.md` -- when fine-tuning spacing, alignment, or layout after script generation
 - `rules/update-canvases-safely.md` -- when modifying an existing canvas without breaking edge references
 - `rules/code-block-ascii-only.md` -- **always apply**: fenced code blocks must contain only ASCII characters; Unicode (em dashes, arrows, emoji, curly quotes) inside a ` ``` ` fence causes parse errors in VSCode canvas extensions
+- `scripts/validate-canvas.py` -- validate any `.canvas` file (18 checks, exit 1 on errors)
+- `scripts/fix-canvas.py` -- auto-repair geometry/spec issues (F1–F9, always creates `.bak`)

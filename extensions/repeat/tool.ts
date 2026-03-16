@@ -23,7 +23,7 @@ export function handleLoopControlTool(opts: {
 	if (!state.active) {
 		return {
 			content: [
-				{ type: "text", text: "No active loop. Start one with /loop." },
+				{ type: "text", text: "No active loop. Start one with /repeat." },
 			],
 			details: undefined,
 			newState: state,
@@ -103,8 +103,8 @@ export function handleLoopControlTool(opts: {
 
 export function getLoopControlToolDefinition() {
 	return {
-		name: "loop_control",
-		label: "Loop Control",
+		name: "repeat_control",
+		label: "Repeat Control",
 		description: [
 			"Signal loop progress. Call this when you finish a loop iteration.",
 			"status 'next': advance to the next step/pass/stage.",

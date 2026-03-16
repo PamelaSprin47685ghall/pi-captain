@@ -16,6 +16,14 @@ The script (`scripts/generate-canvas.py`) handles this automatically when you se
 
 **Z-index**: Place group nodes before their children in the `nodes` array. Obsidian renders nodes in array order (first = bottom, last = top). Groups must render below their children.
 
+**Nested groups**: Groups can contain other groups — 6 of 49 real-world canvases use this (e.g., `oop-python`: a large "OOP" outer group containing "Duck types", "OOP basics", "Inheritance" sub-groups). Array order still applies: outermost group first, then inner groups, then leaf nodes. Bounds still stack — compute inner group bounds from its children, then outer group bounds from all inner groups + any loose children:
+
+```
+nodes array order: [outer_group, inner_group_A, inner_group_B, child_of_A1, child_of_A2, child_of_B1]
+```
+
+Group background image: set `"background": "vault/relative/path/to/image.png"` on a group node to use an image as background fill. Optionally add `"backgroundStyle": "cover" | "ratio" | "repeat"`. Background is purely decorative — children still overlay it normally.
+
 ## Avoid
 
 ```json

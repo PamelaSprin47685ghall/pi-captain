@@ -41,7 +41,8 @@
 			"./extensions/native-web-search",
 			"./extensions/zellij-tab-namer",
 			"./extensions/handoff",
-			"./extensions/claude-modes"
+			"./extensions/claude-modes",
+			"./extensions/voice"
 		],
 		"skills": [
 			"./skills"
@@ -60,7 +61,8 @@
 		"extensions/safety-path-protection",
 		"extensions/native-web-search",
 		"extensions/zellij-tab-namer",
-		"extensions/claude-modes"
+		"extensions/claude-modes",
+		"extensions/voice"
 	],
 	"dependencies": {
 		"neverthrow": "^8.2.0"

@@ -447,6 +447,66 @@ pi.on("session_start", async (_e, ctx) => {
 });
 ```
 
+## Spawning a real pi sub-agent inside an extension (createAgentSession)
+
+Use `createAgentSession` to create an isolated agent with real tools and skills — instead of raw `stream()` which has no tool support.
+
+```typescript
+import {
+  createAgentSession,
+  createReadOnlyTools,   // read, grep, find, ls — safe default
+  // createCodingTools,  // read, bash, edit, write — full access
+  SessionManager,
+} from "@mariozechner/pi-coding-agent";
+import type { AgentSession, AgentSessionEvent } from "@mariozechner/pi-coding-agent";
+
+// Inside a command handler (ctx is ExtensionCommandContext):
+const { session } = await createAgentSession({
+  cwd: ctx.cwd,                          // MUST use ctx.cwd, not process.cwd()
+  model: ctx.model,                      // Re-use the current model
+  modelRegistry: ctx.modelRegistry,      // Re-use auth/keys
+  sessionManager: SessionManager.inMemory(), // No persistent session files
+  tools: createReadOnlyTools(ctx.cwd),   // Give it tools
+  // Skills are auto-loaded from the resource loader (global + project)
+});
+
+// Subscribe to streaming events before calling prompt()
+const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
+  if (event.type === "message_update") {
+    const ae = event.assistantMessageEvent;
+    if (ae.type === "text_delta") {
+      // ae.delta is the new text chunk
+    }
+  }
+  if (event.type === "agent_end") {
+    // Done
+  }
+  if (event.type === "tool_execution_start") {
+    // event.toolName, event.args
+  }
+});
+
+// Send a prompt — agent runs full loop including tool calls
+await session.prompt("Summarize the files in src/");
+
+// Cancel mid-run
+session.abort().catch(() => {});
+
+// Always dispose when done
+unsubscribe();
+session.dispose();
+```
+
+**Key rules:**
+- Use `SessionManager.inMemory()` so the sub-agent doesn't write session files
+- Re-use `ctx.model` and `ctx.modelRegistry` for auth — no separate API key lookup needed
+- `createReadOnlyTools` is safe for side-agents; `createCodingTools` gives full write access
+- Subscribe **before** calling `prompt()` to catch all events
+- Always call `session.dispose()` on cleanup (shutdown, expiry, dialog close)
+- `session.abort()` aborts the current turn; `dispose()` disconnects listeners
+
+---
+
 ## Project-local config + system prompt injection
 
 Scan the filesystem at session start and inject paths/content into the system prompt so the LLM knows to read them:

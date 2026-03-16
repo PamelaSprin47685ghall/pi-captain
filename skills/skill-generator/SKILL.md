@@ -153,8 +153,81 @@ When generating a skill, follow this sequence:
 8. **Search the codebase for patterns** -- Look for domain-relevant conventions, existing skills, or config files to ground the rules in real usage rather than generic placeholders
 9. **Generate files** -- Create the directory structure with all files. Use `scripts/init-skill.ts` to scaffold, or create manually. If the skill includes scripts, test them before finalizing
 10. **Validate** -- Run `scripts/validate-skill.ts` to check structure, or manually verify: SKILL.md exists with 100+ word description, rules have no frontmatter and use Avoid/Prefer format, all referenced files exist
+11. **Offer the eval loop** -- For skills with verifiable outputs, offer to run test prompts and open the eval viewer (see §Eval Loop below)
 
 Output goes to the `skills/<skill-name>/` directory (or wherever the user specifies).
+
+---
+
+## Eval Loop (draft → test → review → improve)
+
+After writing a draft skill, iterate with the user to make it actually work. The loop is: run test prompts → view results → improve → repeat.
+
+**Step 1 — Create test cases**: Write 3-5 test prompts that exercise the skill. Good test prompts are concrete with realistic context — not `"Format this data"` but `"I have a CSV with columns date, revenue, cost. Add a margin% column."`. Save as a dataset JSON for /evalset:
+
+```json
+{
+  "name": "my-skill-smoke",
+  "systemPrompt": "You have access to a skill called my-skill.",
+  "cases": [
+    {
+      "id": "happy-path",
+      "input": "Detailed realistic prompt here",
+      "expectContains": ["key term in good output"],
+      "expectNotContains": ["sign of failure"]
+    }
+  ]
+}
+```
+
+**Step 2 — Run evals**: Use the evalset extension (`/evalset run <dataset.json>`) to run all cases and save a JSON report to `.evalset/reports/`.
+
+**Step 3 — Open the eval viewer**: Launch the viewer to review outputs and leave qualitative feedback before changing anything:
+
+```bash
+python skills/skill-generator/scripts/eval-viewer/generate_review.py
+# Auto-detects .evalset/reports/ in cwd
+# Opens http://localhost:3117 in your browser
+```
+
+Or write a static HTML file (useful in headless/Cowork environments):
+```bash
+python skills/skill-generator/scripts/eval-viewer/generate_review.py --static /tmp/eval-review.html
+open /tmp/eval-review.html
+```
+
+**Step 4 — Improve**: Based on viewer feedback, improve the skill. Key principles from Anthropic's skill-creator:
+- **Generalize, don't overfit** — make changes that improve the skill for all future prompts, not just the test cases
+- **Keep it lean** — remove instructions that aren't pulling their weight; read what the model actually did
+- **Explain the why** — LLMs respond better to reasoning than rigid rules. Avoid ALWAYS/NEVER in all-caps; explain the intent instead
+- **Bundle repeated work** — if every test run writes the same helper script, bundle it in `scripts/`
+
+**Step 5 — Compare variants**: When unsure if a change helps, use `/evalset compare` to run both system prompts head-to-head:
+```bash
+/evalset compare evals/dataset.json system-v1.txt system-v2.txt
+```
+Then open the viewer — it shows per-case winners side-by-side.
+
+**Step 6 — Optimize the description**: After the skill content is solid, optimize the frontmatter `description` for triggering accuracy:
+
+1. Use `assets/eval_review.html` to build a trigger eval set (20 queries, mix of should/should-not trigger). Open it:
+   ```bash
+   # Copy to temp, inject eval data, open
+   python -c "
+   import json, pathlib
+   data = [{'query': 'example prompt', 'should_trigger': True}]
+   html = pathlib.Path('skills/skill-generator/assets/eval_review.html').read_text()
+   html = html.replace('__EVAL_DATA_PLACEHOLDER__', json.dumps(data))
+   html = html.replace('__SKILL_NAME_PLACEHOLDER__', 'my-skill')
+   html = html.replace('__SKILL_DESCRIPTION_PLACEHOLDER__', 'current description...')
+   pathlib.Path('/tmp/trigger-eval.html').write_text(html)
+   "
+   open /tmp/trigger-eval.html
+   ```
+2. User reviews + edits queries, clicks "Export Eval Set" → downloads `eval_set.json`
+3. Use the exported set to manually test descriptions by checking which trigger and which don't
+
+**Tip — description "pushiness"**: Claude tends to undertrigger skills. Write descriptions that are a little pushy: instead of *"Use when the user needs X"*, write *"Use whenever the user mentions X, Y, or Z — even if they don't explicitly ask for this skill."*
 
 ## What Not to Include
 
@@ -206,6 +279,11 @@ After generating or reviewing a skill, examine what happened — mistakes, gaps,
 - `scripts/init-skill.ts` -- Scaffold a new skill directory with TODO-filled templates. Run: `bun scripts/init-skill.ts <name> [--output <dir>]`
 - `scripts/validate-skill.ts` -- Check structure, frontmatter, naming, description length, rule format. Run: `bun scripts/validate-skill.ts <path>`
 - `scripts/analyze-skill.ts` -- Report line counts, rule count, description words, missing sections, token estimate. Run: `bun scripts/analyze-skill.ts <path>`
+- `scripts/eval-viewer/generate_review.py` -- Serve a browser-based viewer for pi evalset JSON reports. Run: `python scripts/eval-viewer/generate_review.py [--reports-dir .evalset/reports] [--static /tmp/out.html]`
+
+## Assets
+
+- `assets/eval_review.html` -- HTML template for reviewing trigger eval queries (description optimization). Inject `__EVAL_DATA_PLACEHOLDER__`, `__SKILL_NAME_PLACEHOLDER__`, `__SKILL_DESCRIPTION_PLACEHOLDER__` before opening.
 
 ## Reference Files
 

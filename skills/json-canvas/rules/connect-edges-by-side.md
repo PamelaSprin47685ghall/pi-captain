@@ -16,6 +16,12 @@ Omitting both ends produces a standard directional arrow. Set `fromEnd: "arrow"`
 
 The script (`scripts/generate-canvas.py`) selects sides automatically based on relative node positions.
 
+**Edge color**: Set `"color"` on an edge (same preset `"1"`–`"6"` or hex as nodes) to visually group edge types. Useful in dense graphs to distinguish dependency types, data flows, optional vs. required links, etc.
+
+**Edge style**: `"styleAttributes": {"path": "short-dashed"}` produces a dashed edge. Omit `styleAttributes` or pass `{}` for solid. This field is required to be present (even as `{}`) in files that Obsidian has saved — you can omit it when writing new edges.
+
+**Floating anchors**: `fromFloating: false` / `toFloating: false` — when Obsidian saves an edge that has explicit `fromSide`/`toSide`, it may emit these booleans to pin the anchor. You don't need to write them; Obsidian adds them on save. If you see them in existing files, don't remove them.
+
 ## Avoid
 
 ```json
