@@ -1,11 +1,11 @@
 // loop-tool.ts — Tool definition, execution, and rendering for loop_control
 
-import { StringEnum } from "@mariozechner/pi-ai";
+import { StringEnum } from "@oh-my-pi/pi-ai";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+} from "@oh-my-pi/pi-coding-agent";
+import { Text } from "@oh-my-pi/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { buildPrompt, type LoopState } from "./state.js";
 

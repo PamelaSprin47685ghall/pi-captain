@@ -10,8 +10,8 @@
 import type {
 	ExtensionAPI,
 	ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
-import { Key } from "@mariozechner/pi-tui";
+} from "@oh-my-pi/pi-coding-agent";
+import { Key } from "@oh-my-pi/pi-tui";
 import {
 	buildPrompt,
 	emptyState,

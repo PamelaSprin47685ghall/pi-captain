@@ -1,6 +1,6 @@
 // loop-state.ts — Types and utilities for the loop extension
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 
 export type LoopMode = "goal" | "passes" | "pipeline";
 

@@ -19,3 +19,5 @@ __pycache__/
 
 # JSON Canvas samples collected from GitHub (not part of the skill source)
 skills/json-canvas/samples/
+
+bun.lock
