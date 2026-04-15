@@ -1,46 +1,16 @@
-// index.ts — General-purpose agent loop extension
-// Supports 3 modes:
-//   /repeat goal <description>     — repeat until the LLM declares the goal met
-//   /repeat passes <N> <task>      — repeat exactly N times
-//   /repeat pipeline <s1|s2|s3>    — run stages sequentially, stop after last
-//
-// The LLM gets a `loop_control` tool to signal progress/completion.
-// Ctrl+Shift+X to abort at any time.
-
-import type {
-	ExtensionAPI,
-	ExtensionContext,
-} from "@oh-my-pi/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { Key } from "@oh-my-pi/pi-tui";
-import {
-	buildPrompt,
-	emptyState,
-	getSystemPromptAddition,
-	type LoopMode,
-	type LoopState,
-	parseGoalArgs,
-	parsePassesArgs,
-	parsePipelineArgs,
-	updateWidget,
-} from "./state.js";
-import {
-	getLoopControlToolDefinition,
-	handleLoopControlTool,
-	renderLoopControlCall,
-	renderLoopControlResult,
-} from "./tool.js";
+import { buildPrompt, emptyState, getSystemPromptAddition, type LoopState, updateWidget } from "./state.js";
+import { getLoopControlToolDefinition, handleLoopControlTool, renderLoopControlCall, renderLoopControlResult } from "./tool.js";
 
 export default function (pi: ExtensionAPI) {
 	let state = emptyState();
 
-	// ── Reconstruct state from session branch ────────────────────────────
 	const reconstruct = (ctx: ExtensionContext) => {
 		state = emptyState();
 		for (const entry of ctx.sessionManager.getBranch()) {
-			if (entry.type !== "message") continue;
-			const msg = entry.message;
-			if (msg.role === "toolResult" && msg.toolName === "loop_control") {
-				const d = msg.details as LoopState | undefined;
+			if (entry.type === "message" && entry.message.role === "toolResult" && entry.message.toolName === "loop_control") {
+				const d = entry.message.details as LoopState | undefined;
 				if (d) state = { ...d };
 			}
 		}
@@ -51,131 +21,96 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_fork", async (_e, ctx) => reconstruct(ctx));
 	pi.on("session_tree", async (_e, ctx) => reconstruct(ctx));
 
-	// ── Core: auto-advance after each agent turn ────────────────────────
-	pi.on("agent_end", async (_e, _ctx) => {
-		if (!state.active || state.done) return;
-		// Grace hook: LLM is nudged via system prompt to call loop_control;
-		// no auto-advance needed here — the tool handles progression.
+	pi.on("input", async (event, ctx) => {
+		const text = event.text.trim();
+		// Handle commands natively
+		if (text.startsWith("/")) {
+			if (text.startsWith("/once ") || text === "/once") {
+				return { text: text.slice(5).trim() };
+			}
+			return {};
+		}
+
+		// Normal message: start loop
+		state = { active: true, currentStep: 0, goal: text, done: false, reasonDone: "" };
+		updateWidget(state, ctx);
+
+		// Delay the prompt steer delivery to avoid conflicting with the pending user message
+		setTimeout(() => {
+			pi.sendMessage({ customType: "loop-iteration", content: buildPrompt(state), display: false }, { triggerTurn: false, deliverAs: "steer" });
+		}, 50);
+
+		return {}; // let original text through
 	});
 
-	// ── Tool: the LLM calls this to signal progress ─────────────────────
+	pi.on("before_agent_start", async (event) => {
+		if (!state.active) return;
+		return { systemPrompt: event.systemPrompt + getSystemPromptAddition(state) };
+	});
+
+	pi.on("turn_end", async (_e, ctx) => {
+		if (!state.active) return;
+
+		if (state.confirmingDone) {
+			state.active = false;
+			state.done = true;
+			state.reasonDone = "Confirmed complete by skipping loop_control";
+			state.confirmingDone = false;
+			updateWidget(state, ctx);
+			return;
+		}
+
+		if (state.nextScheduled) {
+			state.nextScheduled = false;
+			return;
+		}
+
+		// Fallback: LLM stopped without calling loop_control or confirming done
+		state.currentStep++;
+		updateWidget(state, ctx);
+		setTimeout(() => {
+			pi.sendMessage({
+				customType: "loop-fallback",
+				content: "You stopped without calling `loop_control`. If the task is incomplete, continue working. If done, call `loop_control` with status 'done'.",
+				display: false
+			}, { triggerTurn: true, deliverAs: "steer" });
+		}, 100);
+	});
+
 	pi.registerTool({
 		...getLoopControlToolDefinition(),
-		// biome-ignore lint/complexity/useMaxParams: implements AgentTool.execute — signature fixed by pi SDK
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const result = handleLoopControlTool({ params, state, pi, ctx });
 			state = result.newState;
 			updateWidget(state, ctx);
-			return {
-				content: result.content,
-				details: result.details,
-			};
+			return { content: result.content, details: result.details };
 		},
-		renderCall: renderLoopControlCall,
-		renderResult: renderLoopControlResult,
+		renderCall: renderLoopControlCall as any,
+		renderResult: renderLoopControlResult as any,
 	});
 
-	// ── Inject loop context into the system prompt ───────────────────────
-	pi.on("before_agent_start", async (event, _ctx) => {
-		if (!state.active) return;
-		return {
-			systemPrompt: event.systemPrompt + getSystemPromptAddition(state),
-		};
-	});
+	const stopLoop = (ctx: ExtensionContext, reason: string) => {
+		if (!state.active) {
+			ctx.ui.notify("No active loop", "info");
+			return;
+		}
+		state.active = false;
+		state.done = true;
+		state.reasonDone = reason;
+		updateWidget(state, ctx);
+		ctx.ui.notify(`Loop stopped after ${state.currentStep + 1} iteration(s)`, "warning");
+	};
 
-	// ── /repeat command — start a loop ───────────────────────────────────
-	pi.registerCommand("repeat", {
-		description:
-			"Start a loop. Usage: /repeat goal <desc> | /repeat passes <N> <task> | /repeat pipeline <s1|s2|s3> <goal>",
-		getArgumentCompletions: () => [
-			{
-				value: "goal ",
-				label: "goal <description>",
-				description: "Loop until goal is met",
-			},
-			{
-				value: "passes ",
-				label: "passes <N> <task>",
-				description: "Run exactly N passes",
-			},
-			{
-				value: "pipeline ",
-				label: "pipeline <s1|s2|s3> <goal>",
-				description: "Run stages in order",
-			},
-		],
-		handler: async (args, ctx) => {
-			if (!args?.trim()) {
-				ctx.ui.notify(
-					"Usage:\n  /repeat goal <description>\n  /repeat passes <N> <task>\n  /repeat pipeline <s1|s2|s3> <goal>",
-					"info",
-				);
-				return;
-			}
-
-			await ctx.waitForIdle();
-
-			const parts = args.trim().split(/\s+/);
-			const mode = parts[0] as LoopMode;
-
-			let result: LoopState | string;
-
-			if (mode === "goal") {
-				result = parseGoalArgs(parts);
-			} else if (mode === "passes") {
-				result = parsePassesArgs(parts);
-			} else if (mode === "pipeline") {
-				result = parsePipelineArgs(parts);
-			} else {
-				ctx.ui.notify(
-					`Unknown mode "${mode}". Use: goal, passes, or pipeline`,
-					"error",
-				);
-				return;
-			}
-
-			if (typeof result === "string") {
-				ctx.ui.notify(result, "error");
-				return;
-			}
-
-			state = result;
-			updateWidget(state, ctx);
-			// Kick off the first iteration
-			pi.sendUserMessage(buildPrompt(state));
-		},
-	});
-
-	// ── /repeat-stop command ─────────────────────────────────────────────
-	pi.registerCommand("repeat-stop", {
+	pi.registerCommand("loop-stop", {
 		description: "Stop the active loop",
-		handler: async (_args, ctx) => {
-			if (!state.active) {
-				ctx.ui.notify("No active loop", "info");
-				return;
-			}
-			state.active = false;
-			state.done = true;
-			state.reasonDone = "Stopped by user";
-			updateWidget(state, ctx);
-			ctx.ui.notify(
-				`Loop stopped after ${state.currentStep + 1} iteration(s)`,
-				"warning",
-			);
-		},
+		handler: async (_args, ctx) => stopLoop(ctx, "Stopped by user"),
 	});
 
-	// ── Ctrl+Shift+X — emergency stop ───────────────────────────────────
 	pi.registerShortcut(Key.ctrlShift("x"), {
 		description: "Stop the active loop",
 		handler: async (ctx) => {
-			if (!state.active) return;
-			state.active = false;
-			state.done = true;
-			state.reasonDone = "Stopped by shortcut";
-			updateWidget(state, ctx);
-			ctx.abort(); // also abort the current LLM turn
-			ctx.ui.notify("Loop aborted", "warning");
+			stopLoop(ctx, "Stopped by shortcut");
+			ctx.abort();
 		},
 	});
 }

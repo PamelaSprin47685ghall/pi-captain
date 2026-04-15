@@ -1,159 +1,68 @@
-// loop-tool.ts — Tool definition, execution, and rendering for loop_control
-
 import { StringEnum } from "@oh-my-pi/pi-ai";
-import type {
-	ExtensionAPI,
-	ExtensionContext,
-} from "@oh-my-pi/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { Text } from "@oh-my-pi/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { buildPrompt, type LoopState } from "./state.js";
 
 export function handleLoopControlTool(opts: {
-	params: { status: "next" | "done"; summary: string; reason?: string };
-	state: LoopState;
-	pi: ExtensionAPI;
-	ctx: ExtensionContext;
-}): {
-	content: { type: "text"; text: string }[];
-	details: LoopState | undefined;
-	newState: LoopState;
-} {
-	const { params, state, pi } = opts;
-	if (!state.active) {
-		return {
-			content: [
-				{ type: "text", text: "No active loop. Start one with /repeat." },
-			],
-			details: undefined,
-			newState: state,
-		};
-	}
+        params: { status: "next" | "done"; summary: string; reason?: string };
+        state: LoopState;
+        pi: ExtensionAPI;
+        ctx: ExtensionContext;
+}): { content: any[]; details?: LoopState; newState: LoopState } {
+        const { params, state, pi } = opts;
+        if (!state.active) {
+                return { content: [{ type: "text", text: "No active loop." }], newState: state };
+        }
 
-	if (params.status === "done") {
-		const newState = {
-			...state,
-			done: true,
-			reasonDone: params.reason ?? params.summary,
-			active: false,
-		};
-		return {
-			content: [
-				{
-					type: "text",
-					text: `✓ Loop complete after ${state.currentStep + 1} iteration(s). Reason: ${newState.reasonDone}`,
-				},
-			],
-			details: { ...newState } as LoopState,
-			newState,
-		};
-	}
+        if (params.status === "done") {
+                if (!state.confirmingDone) {
+                        const newState = { ...state, confirmingDone: true };
+                        return {
+                                content: [{ type: "text", text: "Please confirm that the work is completely done. If there are still pending tasks, call loop_control with status 'next'. If you are truly done, just finish your response without calling loop_control again." }],
+                                details: { ...newState },
+                                newState,
+                        };
+                }
+                const newState = { ...state, done: true, reasonDone: params.reason ?? params.summary, active: false, confirmingDone: false };
+                return {
+                        content: [{ type: "text", text: `✓ Loop complete after ${state.currentStep + 1} iteration(s). Reason: ${newState.reasonDone}` }],
+                        details: { ...newState },
+                        newState,
+                };
+        }
 
-	// status === "next" — advance
-	const newState = { ...state, currentStep: state.currentStep + 1 };
+        const newState = { ...state, currentStep: state.currentStep + 1, confirmingDone: false, nextScheduled: true };
+        setTimeout(() => {
+                pi.sendMessage({ customType: "loop-iteration", content: buildPrompt(newState), display: false }, { triggerTurn: true, deliverAs: "steer" });
+        }, 100);
 
-	const atEnd =
-		state.mode === "passes"
-			? newState.currentStep >= state.maxSteps
-			: state.mode === "pipeline"
-				? newState.currentStep >= state.stages.length
-				: false;
-
-	if (atEnd) {
-		const finalState = {
-			...newState,
-			done: true,
-			active: false,
-			reasonDone: `Completed all ${state.mode === "passes" ? "passes" : "stages"}`,
-		};
-		return {
-			content: [
-				{
-					type: "text",
-					text: `✓ Loop complete — all ${state.maxSteps} iterations done.`,
-				},
-			],
-			details: { ...finalState } as LoopState,
-			newState: finalState,
-		};
-	}
-
-	setTimeout(() => {
-		pi.sendMessage(
-			{
-				customType: "loop-iteration",
-				content: buildPrompt(newState),
-				display: false,
-			},
-			{ triggerTurn: true, deliverAs: "steer" },
-		);
-	}, 100);
-
-	return {
-		content: [
-			{
-				type: "text",
-				text: `→ Advancing to step ${newState.currentStep + 1}. Summary: ${params.summary}`,
-			},
-		],
-		details: { ...newState } as LoopState,
-		newState,
-	};
+        return {
+                content: [{ type: "text", text: `→ Advancing to step ${newState.currentStep + 1}. Summary: ${params.summary}` }],
+                details: { ...newState },
+                newState,
+        };
 }
 
 export function getLoopControlToolDefinition() {
-	return {
-		name: "repeat_control",
-		label: "Repeat Control",
-		description: [
-			"Signal loop progress. Call this when you finish a loop iteration.",
-			"status 'next': advance to the next step/pass/stage.",
-			"status 'done': the goal is met or the final stage/pass is complete.",
-			"Only available when a loop is active.",
-		].join(" "),
-		parameters: Type.Object({
-			status: StringEnum(["next", "done"] as const),
-			summary: Type.String({
-				description: "Brief summary of what was accomplished this iteration",
-			}),
-			reason: Type.Optional(
-				Type.String({ description: "Why the goal is met (for 'done')" }),
-			),
-		}),
-	};
+        return {
+                name: "loop_control",
+                label: "Loop Control",
+                description: "Signal loop progress. Call this when you finish a loop iteration. status 'next' to advance, 'done' to finish.",
+                parameters: Type.Object({
+                        status: StringEnum(["next", "done"] as const),
+                        summary: Type.String({ description: "Brief summary of what was accomplished this iteration" }),
+                        reason: Type.Optional(Type.String({ description: "Why the goal is met (for 'done')" })),
+                }),
+        };
 }
 
-export function renderLoopControlCall(
-	args: { status: string },
-	theme: unknown,
-) {
-	const t = theme as {
-		fg: (k: string, s: string) => string;
-		bold: (s: string) => string;
-	};
-	return new Text(
-		t.fg("toolTitle", t.bold("loop_control ")) +
-			t.fg(args.status === "done" ? "success" : "accent", args.status),
-		0,
-		0,
-	);
+export function renderLoopControlCall(args: { status: string }, theme: any) {
+        return new Text(theme.fg("toolTitle", theme.bold("loop_control ")) + theme.fg(args.status === "done" ? "success" : "accent", args.status), 0, 0);
 }
 
-// biome-ignore lint/complexity/useMaxParams: implements AgentTool.renderResult — signature fixed by pi SDK
-export function renderLoopControlResult(
-	result: { details?: LoopState },
-	_opts: unknown,
-	theme: unknown,
-) {
-	const d = result.details as LoopState | undefined;
-	if (!d) return new Text("", 0, 0);
-	const t = theme as { fg: (color: string, text: string) => string };
-	return new Text(
-		t.fg(
-			d.done ? "success" : "accent",
-			`${d.done ? "✓" : "→"} step ${d.currentStep + 1} — ${d.mode}`,
-		),
-		0,
-		0,
-	);
+export function renderLoopControlResult(result: { details?: LoopState }, _opts: unknown, theme: any) {
+        const d = result.details;
+        if (!d) return new Text("", 0, 0);
+        return new Text(theme.fg(d.done ? "success" : "accent", `${d.done ? "✓" : "→"} step ${d.currentStep + 1}`), 0, 0);
 }
