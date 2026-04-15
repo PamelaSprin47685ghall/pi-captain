@@ -1,12 +1,17 @@
 {
 	"name": "omp-auto-loop",
-	"version": "0.1.1",
-	"description": "General-purpose agent loop extension for pi. Supports goal loops (repeat until done), fixed-pass loops, and multi-stage pipelines via /loop goal, /loop passes, and /loop pipeline commands.",
+	"version": "0.2.0",
+	"description": "General-purpose auto agent loop plugin for omp.",
 	"keywords": [
-		"pi-package"
+		"omp-plugin"
 	],
 	"license": "MIT",
 	"pi": {
+		"extensions": [
+			"."
+		]
+	},
+	"omp": {
 		"extensions": [
 			"."
 		]
