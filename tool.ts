@@ -17,24 +17,43 @@ export function handleLoopControlTool(opts: {
 
         if (params.status === "done") {
                 if (!state.confirmingDone) {
-                        const newState = { ...state, confirmingDone: true };
+                        const newState = {
+                                ...state,
+                                confirmingDone: true,
+                                reasonDone: params.reason?.trim() || params.summary.trim(),
+                                lastSummary: params.summary.trim(),
+                        };
                         return {
                                 content: [{ type: "text", text: "Please confirm that the work is completely done. If there are still pending tasks, call loop_control with status 'next'. If you are truly done, just finish your response without calling loop_control again." }],
                                 details: { ...newState },
                                 newState,
                         };
                 }
-                const newState = { ...state, done: true, reasonDone: params.reason ?? params.summary, active: false, confirmingDone: false };
+                const doneReason = params.reason?.trim() || state.reasonDone || params.summary.trim() || "Goal complete";
+                const newState = {
+                        ...state,
+                        done: true,
+                        reasonDone: doneReason,
+                        lastSummary: params.summary.trim() || state.lastSummary,
+                        active: false,
+                        confirmingDone: false,
+                };
                 return {
-                        content: [{ type: "text", text: `✓ Loop complete after ${state.currentStep + 1} iteration(s). Reason: ${newState.reasonDone}` }],
+                        content: [{ type: "text", text: `✓ Loop complete after ${state.currentStep + 1} iteration(s). Summary: ${newState.lastSummary || "(none)"}. Reason: ${doneReason}` }],
                         details: { ...newState },
                         newState,
                 };
         }
 
-        const newState = { ...state, currentStep: state.currentStep + 1, confirmingDone: false, nextScheduled: true };
+        const newState = {
+                ...state,
+                currentStep: state.currentStep + 1,
+                confirmingDone: false,
+                nextScheduled: true,
+                lastSummary: params.summary.trim(),
+        };
         setTimeout(() => {
-                pi.sendMessage({ customType: "loop-iteration", content: buildPrompt(newState), display: false }, { triggerTurn: true, deliverAs: "steer" });
+                pi.sendMessage({ customType: "loop-iteration", content: buildPrompt(newState), display: true }, { triggerTurn: true, deliverAs: "steer" });
         }, 100);
 
         return {
@@ -64,5 +83,16 @@ export function renderLoopControlCall(args: { status: string }, theme: any) {
 export function renderLoopControlResult(result: { details?: LoopState }, _opts: unknown, theme: any) {
         const d = result.details;
         if (!d) return new Text("", 0, 0);
-        return new Text(theme.fg(d.done ? "success" : "accent", `${d.done ? "✓" : "→"} step ${d.currentStep + 1}`), 0, 0);
+        if (d.done) {
+                const summary = d.lastSummary ? ` ${d.lastSummary}` : "";
+                const reason = d.reasonDone ? `: ${d.reasonDone}` : "";
+                return new Text(theme.fg("success", `✓ done${summary}${reason}`), 0, 0);
+        }
+        if (d.confirmingDone) {
+                const summary = d.lastSummary ? ` ${d.lastSummary}` : "";
+                const reason = d.reasonDone ? `: ${d.reasonDone}` : "";
+                return new Text(theme.fg("accent", `? confirm done${summary}${reason}`), 0, 0);
+        }
+        const summary = d.lastSummary ? ` ${d.lastSummary}` : "";
+        return new Text(theme.fg("accent", `→ step ${d.currentStep + 1}${summary}`), 0, 0);
 }

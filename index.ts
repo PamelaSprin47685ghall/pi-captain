@@ -5,6 +5,7 @@ import { getLoopControlToolDefinition, handleLoopControlTool, renderLoopControlC
 
 export default function (pi: ExtensionAPI) {
 	let state = emptyState();
+	let loopControlCalledThisTurn = false;
 
 	const reconstruct = (ctx: ExtensionContext) => {
 		state = emptyState();
@@ -21,6 +22,16 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_fork", async (_e, ctx) => reconstruct(ctx));
 	pi.on("session_tree", async (_e, ctx) => reconstruct(ctx));
 
+	pi.on("turn_start", async () => {
+		if (!state.active) return;
+		loopControlCalledThisTurn = false;
+	});
+
+	pi.on("tool_call", async (event) => {
+		if (!state.active || event.toolName !== "loop_control") return;
+		loopControlCalledThisTurn = true;
+	});
+
 	pi.on("input", async (event, ctx) => {
 		const text = event.text.trim();
 		// Handle commands natively
@@ -31,16 +42,13 @@ export default function (pi: ExtensionAPI) {
 			return {};
 		}
 
-		// Normal message: start loop
+		// Normal message: start loop without sending the raw user text to the model.
 		state = { active: true, currentStep: 0, goal: text, done: false, reasonDone: "" };
 		updateWidget(state, ctx);
 
-		// Delay the prompt steer delivery to avoid conflicting with the pending user message
-		setTimeout(() => {
-			pi.sendMessage({ customType: "loop-iteration", content: buildPrompt(state), display: false }, { triggerTurn: false, deliverAs: "steer" });
-		}, 50);
+		pi.sendMessage({ customType: "loop-iteration", content: buildPrompt(state), display: true }, { triggerTurn: true, deliverAs: "steer" });
 
-		return {}; // let original text through
+		return { handled: true };
 	});
 
 	pi.on("before_agent_start", async (event) => {
@@ -54,14 +62,21 @@ export default function (pi: ExtensionAPI) {
 		if (state.confirmingDone) {
 			state.active = false;
 			state.done = true;
-			state.reasonDone = "Confirmed complete by skipping loop_control";
 			state.confirmingDone = false;
+			state.reasonDone = state.reasonDone || "Confirmed complete by skipping loop_control";
 			updateWidget(state, ctx);
+			pi.sendMessage({ customType: "loop-status", content: `✓ Loop complete after ${state.currentStep + 1} iteration(s). Reason: ${state.reasonDone}`, display: true, details: { status: "done" } }, { triggerTurn: false, deliverAs: "steer" });
 			return;
 		}
 
 		if (state.nextScheduled) {
 			state.nextScheduled = false;
+			loopControlCalledThisTurn = false;
+			return;
+		}
+
+		if (loopControlCalledThisTurn) {
+			loopControlCalledThisTurn = false;
 			return;
 		}
 
@@ -72,7 +87,7 @@ export default function (pi: ExtensionAPI) {
 			pi.sendMessage({
 				customType: "loop-fallback",
 				content: "You stopped without calling `loop_control`. If the task is incomplete, continue working. If done, call `loop_control` with status 'done'.",
-				display: false
+				display: true
 			}, { triggerTurn: true, deliverAs: "steer" });
 		}, 100);
 	});
@@ -80,6 +95,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		...getLoopControlToolDefinition(),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
+			loopControlCalledThisTurn = true;
 			const result = handleLoopControlTool({ params, state, pi, ctx });
 			state = result.newState;
 			updateWidget(state, ctx);
@@ -106,7 +122,7 @@ export default function (pi: ExtensionAPI) {
 		handler: async (_args, ctx) => stopLoop(ctx, "Stopped by user"),
 	});
 
-	pi.registerShortcut(Key.ctrlShift("x"), {
+	pi.registerShortcut("ctrl+shift+x", {
 		description: "Stop the active loop",
 		handler: async (ctx) => {
 			stopLoop(ctx, "Stopped by shortcut");

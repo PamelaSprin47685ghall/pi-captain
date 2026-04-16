@@ -6,12 +6,13 @@ export interface LoopState {
         goal: string;
         done: boolean;
         reasonDone: string;
+        lastSummary?: string;
         confirmingDone?: boolean;
         nextScheduled?: boolean;
 }
 
 export function emptyState(): LoopState {
-        return { active: false, currentStep: 0, goal: "", done: false, reasonDone: "", confirmingDone: false, nextScheduled: false };
+        return { active: false, currentStep: 0, goal: "", done: false, reasonDone: "", lastSummary: "", confirmingDone: false, nextScheduled: false };
 }
 
 export function buildPrompt(state: LoopState): string {
@@ -25,15 +26,13 @@ export function buildPrompt(state: LoopState): string {
 
 export function updateWidget(state: LoopState, ctx: ExtensionContext) {
         if (!state.active) {
-                ctx.ui.setStatus("loop", undefined);
                 ctx.ui.setWidget("loop", undefined);
                 return;
         }
         const label = `iteration ${state.currentStep + 1}`;
-        ctx.ui.setStatus("loop", `🔄 ${label}`);
         ctx.ui.setWidget("loop", [
                 `┌─ Loop ──────────`,
-                `│ ${label}`,
+                `│ 🔄 ${label}`,
                 `└─ Ctrl+Shift+X to stop ─`,
         ]);
 }
