@@ -18,14 +18,12 @@ export class LoopFSM {
 	private pi: ExtensionAPI;
 	private state: LoopState;
 	/**
-	 * True when the agent has emitted a loop_control tool_call but the execute
-	 * has not finished yet. Guards onTurnEnd against observing stale state.
+	 * Tracks the most recent loop_control action across the whole agent loop.
+	 * "none" if loop_control was not called in the current agent loop.
 	 */
-	private pendingLoopControl: boolean = false;
-	/** Result of loop_control execution for the current turn ("none" if not called). */
-	private turnAction: "none" | "next" | "done" = "none";
-	/** Tracks whether any non-loop tool was called in the current turn. */
-	private sawNonLoopTool: boolean = false;
+	private agentLoopAction: "none" | "next" | "done" = "none";
+	/** Tracks whether any non-loop tool was called in the current agent loop. */
+	private sawAnyNonLoopTool: boolean = false;
 
 	constructor(pi: ExtensionAPI) {
 		this.pi = pi;
@@ -50,19 +48,16 @@ export class LoopFSM {
 		this.dispatch({ type: "reconstruct", state: reconstructed }, ctx);
 	}
 
-	onTurnStart(_ctx: ExtensionContext) {
+	onAgentStart(_ctx: ExtensionContext) {
 		if (this.state.status === "inactive" || this.state.status === "done") return;
-		this.turnAction = "none";
-		this.sawNonLoopTool = false;
-		this.pendingLoopControl = false;
+		this.agentLoopAction = "none";
+		this.sawAnyNonLoopTool = false;
 	}
 
 	onToolCall(event: { toolName?: string }, _ctx: ExtensionContext) {
 		if (this.state.status === "inactive" || this.state.status === "done") return;
-		if (event.toolName === "loop_control") {
-			this.pendingLoopControl = true;
-		} else if (event.toolName) {
-			this.sawNonLoopTool = true;
+		if (event.toolName && event.toolName !== "loop_control") {
+			this.sawAnyNonLoopTool = true;
 		}
 	}
 
@@ -73,8 +68,7 @@ export class LoopFSM {
 		_onUpdate: unknown,
 		ctx: ExtensionContext,
 	) {
-		this.turnAction = params.status;
-		this.pendingLoopControl = false;
+		this.agentLoopAction = params.status;
 		const result = handleLoopControlTool({
 			params,
 			state: this.state,
@@ -98,39 +92,32 @@ export class LoopFSM {
 		return { systemPrompt: (event.systemPrompt ?? "") + getSystemPromptAddition(this.state) };
 	}
 
-	async onTurnEnd(ctx: ExtensionContext) {
+	async onAgentEnd(ctx: ExtensionContext) {
 		if (this.state.status === "inactive" || this.state.status === "done") return;
 
-		// Defensive: if loop_control was called but hasn't executed yet, wait.
-		if (this.pendingLoopControl) {
+		if (this.state.status === "confirming_done") {
+			this.dispatch({ type: "confirm_done" }, ctx);
 			return;
 		}
 
 		if (this.state.status === "running") {
-			if (this.turnAction === "next") {
-				// Agent called loop_control next; wait for onInput to advance.
-				return;
-			}
-			if (this.turnAction === "done") {
-				// State inconsistency: tool said done but state is still running.
-				// Force done directly.
-				this.dispatch({ type: "stop", reason: "Goal complete" }, ctx);
-				return;
-			}
-			if (this.sawNonLoopTool) {
-				// Turn ended after other tools; continue loop rather than scolding.
+			if (this.agentLoopAction === "next") {
+				this.dispatch({ type: "advance" }, ctx);
 				this.sendIteration();
 				return;
 			}
-			// Fallback: model ended turn without calling loop_control.
-			this.dispatch({ type: "turn_end" }, ctx);
+			if (this.agentLoopAction === "done") {
+				// Safety net: loop_control said done but state is still running.
+				this.dispatch({ type: "stop", reason: "Goal complete" }, ctx);
+				return;
+			}
+			if (this.sawAnyNonLoopTool) {
+				// Agent ended after other tools; continue loop rather than scolding.
+				this.sendIteration();
+				return;
+			}
+			// Fallback: model ended the agent loop without calling loop_control.
 			this.sendFallback();
-			return;
-		}
-
-		if (this.state.status === "confirming_done") {
-			// Agent confirmed completion by skipping loop_control again.
-			this.dispatch({ type: "confirm_done" }, ctx);
 			return;
 		}
 	}
@@ -146,13 +133,6 @@ export class LoopFSM {
 
 		if (this.state.status === "confirming_done") {
 			this.dispatch({ type: "confirm_done" }, ctx);
-			return { handled: true };
-		}
-
-		if (this.state.status === "running" && this.turnAction === "next") {
-			// Advance to next iteration and send prompt.
-			this.dispatch({ type: "advance" }, ctx);
-			this.sendIteration();
 			return { handled: true };
 		}
 

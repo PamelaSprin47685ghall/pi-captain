@@ -9,10 +9,10 @@ export type LoopState =
 export type LoopEvent =
 	| { type: "start"; goal: string }
 	| { type: "stop"; reason: string }
-	| { type: "turn_start" }
+	| { type: "agent_start" }
 	| { type: "tool_call_loop_control" }
 	| { type: "tool_result_loop_control"; action: "next" | "done"; summary: string; reason?: string }
-	| { type: "turn_end" }
+	| { type: "agent_end" }
 	| { type: "advance" }
 	| { type: "confirm_done" }
 	| { type: "reconstruct"; state: LoopState };
@@ -75,9 +75,9 @@ export function transition(state: LoopState, event: LoopEvent): LoopState {
 		case "reconstruct":
 			return event.state;
 
-		case "turn_start":
+		case "agent_start":
 		case "tool_call_loop_control":
-		case "turn_end":
+		case "agent_end":
 		case "advance":
 		default:
 			return state;

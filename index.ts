@@ -11,26 +11,15 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_fork", async (_e, ctx) => fsm.reconstruct(ctx));
 	pi.on("session_tree", async (_e, ctx) => fsm.reconstruct(ctx));
 
-	pi.on("turn_start", async (_e, ctx) => fsm.onTurnStart(ctx));
+	pi.on("agent_start", async (_e, ctx) => fsm.onAgentStart(ctx));
 
 	pi.on("tool_call", async (event, ctx) => fsm.onToolCall(event, ctx));
-
-
-
 
 	pi.on("input", async (event, ctx) => fsm.onInput(event, ctx));
 
 	pi.on("before_agent_start", async (event) => fsm.onBeforeAgentStart(event));
 
-	pi.on("turn_end", async (_e, ctx) => fsm.onTurnEnd(ctx));
-
-
-
-
-
-
-
-
+	pi.on("agent_end", async (_e, ctx) => fsm.onAgentEnd(ctx));
 
 	pi.registerTool({
 		...getLoopControlToolDefinition(),
