@@ -134,7 +134,7 @@ export function shouldSendStatus(prev: LoopState, next: LoopState): boolean {
 
 export function formatStatusMessage(state: LoopState): string {
 	if (state.status !== "done") return "";
-	return `✓ Loop complete after ${state.step + 1} iteration(s). Reason: ${state.reasonDone}`;
+	return `✓ Loop complete after ${state.step + 1} iteration(s).`;
 }
 
 export function formatFallbackMessage(): string {
