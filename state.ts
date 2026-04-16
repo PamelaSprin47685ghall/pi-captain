@@ -78,7 +78,6 @@ export function transition(state: LoopState, event: LoopEvent): LoopState {
 		case "agent_start":
 		case "tool_call_loop_control":
 		case "agent_end":
-		case "advance":
 		default:
 			return state;
 	}

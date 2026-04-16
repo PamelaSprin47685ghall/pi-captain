@@ -35,7 +35,7 @@ export class LoopFSM {
 	}
 
 	reconstruct(ctx: ExtensionContext) {
-		if (this.state.status === "confirming_done" || this.state.status === "done") {
+		if (this.state.status === "running" || this.state.status === "confirming_done" || this.state.status === "done") {
 			return;
 		}
 		let reconstructed = emptyState();
@@ -152,8 +152,8 @@ export class LoopFSM {
 				return;
 			}
 			if (this.sawAnyNonLoopTool) {
-				// Agent ended after other tools; continue loop rather than scolding.
-				this.sendIteration();
+				// Agent ended after other tools without calling loop_control; advance and continue.
+				this.dispatch({ type: "advance" }, ctx);
 				return;
 			}
 			// Fallback: model ended the agent loop without calling loop_control.
