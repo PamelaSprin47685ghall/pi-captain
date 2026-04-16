@@ -24,6 +24,9 @@ export class LoopFSM {
 	private agentLoopAction: "none" | "next" | "done" = "none";
 	/** Tracks whether any non-loop tool was called in the current agent loop. */
 	private sawAnyNonLoopTool: boolean = false;
+	/** When true, the next normal-message auto-loop start should be skipped.
+	 * Used by the /once command to avoid looping a follow-up message. */
+	private skipNextAutoLoop: boolean = false;
 
 	constructor(pi: ExtensionAPI) {
 		this.pi = pi;
@@ -87,9 +90,33 @@ export class LoopFSM {
 		return { content: result.content, details: result.details };
 	}
 
-	onBeforeAgentStart(event: { systemPrompt?: string }) {
+	async onBeforeAgentStart(event: { prompt: string; systemPrompt?: string }, ctx: ExtensionContext) {
+		const wasInactive = this.state.status === "inactive" || this.state.status === "done";
+		const skip = this.skipNextAutoLoop;
+		this.skipNextAutoLoop = false;
+
+		if (wasInactive && !skip) {
+			const text = event.prompt.trim();
+			// Start loop for normal messages that didn't come through the interactive input event
+			// (e.g., initial CLI messages, RPC prompts, or sendUserMessage calls).
+			if (text && !text.startsWith("/")) {
+				this.state = transition(this.state, { type: "start", goal: text });
+				updateWidget(this.state, ctx);
+			}
+		}
+
 		if (this.state.status === "inactive" || this.state.status === "done") return;
-		return { systemPrompt: (event.systemPrompt ?? "") + getSystemPromptAddition(this.state) };
+		return {
+			systemPrompt: (event.systemPrompt ?? "") + getSystemPromptAddition(this.state),
+			message:
+				wasInactive && this.state.status === "running" && !skip
+					? {
+							customType: "loop-iteration",
+							content: buildPrompt(this.state),
+							display: true,
+						}
+					: undefined,
+		};
 	}
 
 	async onAgentEnd(ctx: ExtensionContext) {
@@ -126,6 +153,7 @@ export class LoopFSM {
 		const text = (event.text ?? "").trim();
 		if (text.startsWith("/")) {
 			if (text.startsWith("/once ") || text === "/once") {
+				this.skipNextAutoLoop = true;
 				return { text: text.slice(5).trim() };
 			}
 			return {};
@@ -153,6 +181,10 @@ export class LoopFSM {
 		}
 		this.dispatch({ type: "stop", reason }, ctx);
 		ctx.ui.notify(`Loop stopped after ${this.state.step + 1} iteration(s)`, "warning");
+	}
+
+	setSkipNextAutoLoop(value: boolean) {
+		this.skipNextAutoLoop = value;
 	}
 
 	/** State update, widget sync, and derived message emission. */

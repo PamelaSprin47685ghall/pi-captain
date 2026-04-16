@@ -17,7 +17,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("input", async (event, ctx) => fsm.onInput(event, ctx));
 
-	pi.on("before_agent_start", async (event) => fsm.onBeforeAgentStart(event));
+	pi.on("before_agent_start", async (event, ctx) => fsm.onBeforeAgentStart(event, ctx));
 
 	pi.on("agent_end", async (_e, ctx) => fsm.onAgentEnd(ctx));
 
@@ -40,6 +40,7 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			const text = args.trim();
 			if (text) {
+				fsm.setSkipNextAutoLoop(true);
 				await pi.sendUserMessage(text, { deliverAs: ctx.isIdle() ? undefined : "steer" });
 			}
 		},
