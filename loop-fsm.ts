@@ -5,6 +5,7 @@ import { handleLoopControlTool } from "./tool.js";
 export class LoopFSM {
     private pi: ExtensionAPI;
     private state: LoopState;
+    private turnToolAction: "none" | "next" | "done" = "none";
 
     constructor(pi: ExtensionAPI) {
         this.pi = pi;
@@ -24,14 +25,15 @@ export class LoopFSM {
 
     onTurnStart(ctx: ExtensionContext) {
         if (this.state.status === "inactive" || this.state.status === "done") return;
-        this.transition({ ...this.state, turnIntent: "none" }, ctx);
+        this.turnToolAction = "none";
     }
 
     onToolCall(event: any, ctx: ExtensionContext) {
-        // Nothing needed here, handleLoopControlTool sets turnIntent
+        // turnToolAction is updated in executeTool when loop_control is called.
     }
 
     async executeTool(_id: string, params: any, _signal: any, _onUpdate: any, ctx: ExtensionContext) {
+        this.turnToolAction = params.status === "done" ? "done" : params.status === "next" ? "next" : "none";
         const result = handleLoopControlTool({ params, state: this.state, pi: this.pi, ctx });
         this.transition(result.newState, ctx);
 
@@ -46,12 +48,11 @@ export class LoopFSM {
     async onTurnEnd(ctx: ExtensionContext) {
         if (this.state.status === "inactive" || this.state.status === "done") return;
 
-        if (this.state.turnIntent === "next" || this.state.turnIntent === "done") {
-            // Saw the tool call but waiting for turn end or completion, so the LLM can generate text.
-            return;
-        }
-
         if (this.state.status === "running") {
+            if (this.turnToolAction === "next") {
+                // Saw the tool call but waiting for onInput to advance, so the LLM can generate text.
+                return;
+            }
             // Fallback: model ended without calling loop_control
             this.transition({ ...this.state, step: this.state.step + 1 }, ctx);
             this.pi.sendMessage({
@@ -65,7 +66,7 @@ export class LoopFSM {
         if (this.state.status === "confirming_done") {
             const finalReason = this.state.reasonDone || "Confirmed complete by skipping loop_control";
             const finalStep = this.state.step;
-            this.transition({ ...this.state, status: "done", reasonDone: finalReason, turnIntent: "done" }, ctx);
+            this.transition({ status: "done", step: finalStep, goal: this.state.goal, reasonDone: finalReason, lastSummary: this.state.lastSummary }, ctx);
             this.pi.sendMessage({ customType: "loop-status", content: `✓ Loop complete after ${finalStep + 1} iteration(s). Reason: ${finalReason}`, display: true, details: { status: "done" } }, { triggerTurn: false, deliverAs: "steer" });
             return;
         }
@@ -80,13 +81,17 @@ export class LoopFSM {
             return {};
         }
 
-        if (this.state.status === "running" && this.state.turnIntent === "next") {
+        if (this.state.status === "confirming_done") {
+            this.transition({ status: "done", step: this.state.step, goal: this.state.goal, reasonDone: this.state.reasonDone, lastSummary: this.state.lastSummary }, ctx);
+        }
+
+        if (this.state.status === "running" && this.turnToolAction === "next") {
             this.transition({ ...this.state, step: this.state.step + 1 }, ctx);
             this.pi.sendMessage({ customType: "loop-iteration", content: buildPrompt(this.state), display: true }, { triggerTurn: true, deliverAs: "steer" });
             return { handled: true };
         }
 
-        this.transition({ status: "running", step: 0, goal: text, turnIntent: "none" }, ctx);
+        this.transition({ status: "running", step: 0, goal: text }, ctx);
         this.pi.sendMessage({ customType: "loop-iteration", content: buildPrompt(this.state), display: true }, { triggerTurn: true, deliverAs: "steer" });
         return { handled: true };
     }
@@ -98,7 +103,7 @@ export class LoopFSM {
         }
         const s = this.state.step;
         const g = this.state.goal;
-        this.transition({ status: "done", step: s, goal: g, reasonDone: reason, turnIntent: "done" } as LoopState, ctx);
+        this.transition({ status: "done", step: s, goal: g, reasonDone: reason, lastSummary: this.state.lastSummary } as LoopState, ctx);
         ctx.ui.notify(`Loop stopped after ${s + 1} iteration(s)`, "warning");
     }
 

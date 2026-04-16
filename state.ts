@@ -1,11 +1,10 @@
 import type { ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 
-export type TurnIntent = "none" | "next" | "done";
 
 export type LoopState =
     | { status: "inactive" }
-    | { status: "running"; step: number; goal: string; lastSummary?: string; turnIntent: TurnIntent }
-    | { status: "confirming_done"; step: number; goal: string; reasonDone: string; lastSummary?: string; turnIntent: TurnIntent }
+    | { status: "running"; step: number; goal: string; lastSummary?: string }
+    | { status: "confirming_done"; step: number; goal: string; reasonDone: string; lastSummary?: string }
     | { status: "done"; step: number; goal: string; reasonDone: string; lastSummary?: string; };
 
 export type FsmEvent =

@@ -22,7 +22,6 @@ export function handleLoopControlTool(opts: {
                                 status: "confirming_done",
                                 reasonDone: params.reason?.trim() || params.summary.trim(),
                                 lastSummary: params.summary.trim(),
-                                turnIntent: "done"
                         };
                         return {
                                 content: [{ type: "text", text: "Please confirm that the work is completely done. If there are still pending tasks, call loop_control with status 'next'. If you are truly done, just finish your response without calling loop_control again." }],
@@ -49,7 +48,6 @@ export function handleLoopControlTool(opts: {
                 ...state,
                 status: "running",
                 lastSummary: params.summary.trim(),
-                turnIntent: "next"
         };
 
         return {
