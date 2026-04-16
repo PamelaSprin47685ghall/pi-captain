@@ -136,6 +136,11 @@ export class LoopFSM {
 			return { handled: true };
 		}
 
+		if (this.state.status === "running") {
+			// During an active loop, pass user input through as steer.
+			return { text };
+		}
+
 		// New user input starts a fresh loop.
 		this.dispatch({ type: "start", goal: text }, ctx);
 		return { handled: true };
