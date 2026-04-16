@@ -13,13 +13,13 @@ omp plugin install omp-auto-loop
 - Starts a loop when the user sends a normal message (one that does NOT start with `/`). That message becomes the loop `goal`.
 - Injects a short loop-focused system prompt so the agent knows the current iteration and goal.
 - Provides a tool named `loop_control` which the agent must call to indicate progress: use `status: "next"` to continue, or `status: "done"` to finish.
-- Registers a `loop-stop` command and a `Ctrl+Shift+X` shortcut to stop the active loop from the UI.
+- Registers a `loop-stop` command and a `Ctrl+Shift+S` shortcut to stop the active loop from the UI.
 
 ## Usage
 
 - Start a loop: send a normal message like `Refactor all test files to use the new assertion API` (do NOT prefix with `/`). The extension will begin iterating on that goal.
 - One-off message: prefix with `/once ` to send a single, non-looping turn (e.g. `/once Quick status check`).
-- Stop loop: run the `loop-stop` command or press `Ctrl+Shift+X` to abort the active loop immediately.
+- Stop loop: run the `loop-stop` command or press `Ctrl+Shift+S` to abort the active loop immediately.
 
 ## Tool: `loop_control`
 
@@ -70,7 +70,7 @@ If the extension asks for confirmation after a `done` call, finish the response 
 
 ## UI
 
-- While a loop is active the status bar and a small widget show the current iteration and provide the `Ctrl+Shift+X` stop shortcut.
+- While a loop is active the status bar and a small widget show the current iteration and provide the `Ctrl+Shift+S` stop shortcut.
 
 ## Notes
 

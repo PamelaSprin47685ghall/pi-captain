@@ -182,6 +182,11 @@ export class LoopFSM {
 			return { text };
 		}
 
+		if (!ctx.isIdle()) {
+			// Agent is busy (e.g. during a /once turn), pass user input through as steer.
+			return { text };
+		}
+
 		// New user input starts a fresh loop.
 		this.dispatch({ type: "start", goal: text }, ctx);
 		return { handled: true };

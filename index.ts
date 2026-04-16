@@ -46,7 +46,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerShortcut("ctrl+shift+x", {
+	pi.registerShortcut("ctrl+shift+s", {
 		description: "Stop the active loop",
 		handler: async (ctx) => {
 			fsm.stop(ctx, "Stopped by shortcut");

@@ -104,7 +104,7 @@ export function updateWidget(state: LoopState, ctx: ExtensionContext) {
 	ctx.ui.setWidget("loop", [
 		`┌─ Loop ──────────`,
 		`│ 🔄 ${label}`,
-		`└─ Ctrl+Shift+X to stop ─`,
+		`└─ Ctrl+Shift+S to stop ─`,
 	]);
 }
 
