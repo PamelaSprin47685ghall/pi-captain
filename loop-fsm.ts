@@ -130,7 +130,6 @@ export class LoopFSM {
 		if (this.state.status === "running") {
 			if (this.agentLoopAction === "next") {
 				this.dispatch({ type: "advance" }, ctx);
-				this.sendIteration();
 				return;
 			}
 			if (this.agentLoopAction === "done") {
