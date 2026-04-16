@@ -1,6 +1,6 @@
 {
 	"name": "omp-auto-loop",
-	"version": "0.4.7",
+	"version": "0.4.8",
 	"description": "General-purpose auto agent loop plugin for omp.",
 	"keywords": [
 		"omp-plugin"
