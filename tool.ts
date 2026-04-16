@@ -2,7 +2,7 @@ import { StringEnum } from "@oh-my-pi/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { Text } from "@oh-my-pi/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { buildPrompt, type LoopState } from "./state.js";
+import { type LoopState } from "./state.js";
 
 export function handleLoopControlTool(opts: {
         params: { status: "next" | "done"; summary: string; reason?: string };
@@ -10,18 +10,19 @@ export function handleLoopControlTool(opts: {
         pi: ExtensionAPI;
         ctx: ExtensionContext;
 }): { content: any[]; details?: LoopState; newState: LoopState } {
-        const { params, state, pi } = opts;
-        if (!state.active) {
+        const { params, state } = opts;
+        if (state.status === "inactive" || state.status === "done") {
                 return { content: [{ type: "text", text: "No active loop." }], newState: state };
         }
 
         if (params.status === "done") {
-                if (!state.confirmingDone) {
-                        const newState = {
+                if (state.status === "running") {
+                        const newState: LoopState = {
                                 ...state,
-                                confirmingDone: true,
+                                status: "confirming_done",
                                 reasonDone: params.reason?.trim() || params.summary.trim(),
                                 lastSummary: params.summary.trim(),
+                                turnIntent: "done"
                         };
                         return {
                                 content: [{ type: "text", text: "Please confirm that the work is completely done. If there are still pending tasks, call loop_control with status 'next'. If you are truly done, just finish your response without calling loop_control again." }],
@@ -30,34 +31,29 @@ export function handleLoopControlTool(opts: {
                         };
                 }
                 const doneReason = params.reason?.trim() || state.reasonDone || params.summary.trim() || "Goal complete";
-                const newState = {
-                        ...state,
-                        done: true,
+                const newState: LoopState = {
+                        status: "done",
+                        step: state.step,
+                        goal: state.goal,
                         reasonDone: doneReason,
                         lastSummary: params.summary.trim() || state.lastSummary,
-                        active: false,
-                        confirmingDone: false,
                 };
                 return {
-                        content: [{ type: "text", text: `✓ Loop complete after ${state.currentStep + 1} iteration(s). Summary: ${newState.lastSummary || "(none)"}. Reason: ${doneReason}` }],
+                        content: [{ type: "text", text: `✓ Loop complete after ${state.step + 1} iteration(s). Summary: ${params.summary.trim() || state.lastSummary || "(none)"}. Reason: ${doneReason}` }],
                         details: { ...newState },
                         newState,
                 };
         }
 
-        const newState = {
+        const newState: LoopState = {
                 ...state,
-                currentStep: state.currentStep + 1,
-                confirmingDone: false,
-                nextScheduled: true,
+                status: "running",
                 lastSummary: params.summary.trim(),
+                turnIntent: "next"
         };
-        setTimeout(() => {
-                pi.sendMessage({ customType: "loop-iteration", content: buildPrompt(newState), display: true }, { triggerTurn: true, deliverAs: "steer" });
-        }, 100);
 
         return {
-                content: [{ type: "text", text: `→ Advancing to step ${newState.currentStep + 1}. Summary: ${params.summary}` }],
+                content: [{ type: "text", text: `→ Advancing to step ${newState.step + 1}. Summary: ${params.summary}` }],
                 details: { ...newState },
                 newState,
         };
@@ -83,16 +79,19 @@ export function renderLoopControlCall(args: { status: string }, theme: any) {
 export function renderLoopControlResult(result: { details?: LoopState }, _opts: unknown, theme: any) {
         const d = result.details;
         if (!d) return new Text("", 0, 0);
-        if (d.done) {
+        if (d.status === "done") {
                 const summary = d.lastSummary ? ` ${d.lastSummary}` : "";
                 const reason = d.reasonDone ? `: ${d.reasonDone}` : "";
                 return new Text(theme.fg("success", `✓ done${summary}${reason}`), 0, 0);
         }
-        if (d.confirmingDone) {
+        if (d.status === "confirming_done") {
                 const summary = d.lastSummary ? ` ${d.lastSummary}` : "";
                 const reason = d.reasonDone ? `: ${d.reasonDone}` : "";
                 return new Text(theme.fg("accent", `? confirm done${summary}${reason}`), 0, 0);
         }
-        const summary = d.lastSummary ? ` ${d.lastSummary}` : "";
-        return new Text(theme.fg("accent", `→ step ${d.currentStep + 1}${summary}`), 0, 0);
+        if (d.status === "running") {
+                const summary = d.lastSummary ? ` ${d.lastSummary}` : "";
+                return new Text(theme.fg("accent", `→ step ${d.step + 1}${summary}`), 0, 0);
+        }
+        return new Text("", 0, 0);
 }
