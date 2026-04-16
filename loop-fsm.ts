@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
+import type { AgentMessage } from "@oh-my-pi/pi-ai";
 import {
 	buildPrompt,
 	emptyState,
@@ -119,15 +120,28 @@ export class LoopFSM {
 		};
 	}
 
-	async onAgentEnd(ctx: ExtensionContext) {
+	async onAgentEnd(event: { messages: AgentMessage[] }, ctx: ExtensionContext) {
 		if (this.state.status === "inactive" || this.state.status === "done") return;
 
+		const lastAssistant = [...event.messages]
+			.reverse()
+			.find((m): m is AgentMessage => m.role === "assistant") as AgentMessage | undefined;
+		const wasAborted = lastAssistant?.stopReason === "aborted";
+
 		if (this.state.status === "confirming_done") {
+			if (wasAborted) {
+				this.dispatch({ type: "stop", reason: "Interrupted by user" }, ctx);
+				return;
+			}
 			this.dispatch({ type: "confirm_done" }, ctx);
 			return;
 		}
 
 		if (this.state.status === "running") {
+			if (wasAborted) {
+				this.dispatch({ type: "stop", reason: "Interrupted by user" }, ctx);
+				return;
+			}
 			if (this.agentLoopAction === "next") {
 				this.dispatch({ type: "advance" }, ctx);
 				return;

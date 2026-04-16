@@ -19,7 +19,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("before_agent_start", async (event, ctx) => fsm.onBeforeAgentStart(event, ctx));
 
-	pi.on("agent_end", async (_e, ctx) => fsm.onAgentEnd(ctx));
+	pi.on("agent_end", async (e, ctx) => fsm.onAgentEnd(e, ctx));
 
 	pi.registerTool({
 		...getLoopControlToolDefinition(),
