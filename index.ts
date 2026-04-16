@@ -35,6 +35,16 @@ export default function (pi: ExtensionAPI) {
 		handler: async (_args, ctx) => fsm.stop(ctx, "Stopped by user"),
 	});
 
+	pi.registerCommand("once", {
+		description: "Send a single, non-looping turn",
+		handler: async (args, ctx) => {
+			const text = args.trim();
+			if (text) {
+				await pi.sendUserMessage(text, { deliverAs: ctx.isIdle() ? undefined : "steer" });
+			}
+		},
+	});
+
 	pi.registerShortcut("ctrl+shift+x", {
 		description: "Stop the active loop",
 		handler: async (ctx) => {
