@@ -2,21 +2,21 @@ import type { ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 
 
 export type LoopState =
-    | { status: "inactive" }
-    | { status: "running"; step: number; goal: string; lastSummary?: string }
-    | { status: "confirming_done"; step: number; goal: string; reasonDone: string; lastSummary?: string }
-    | { status: "done"; step: number; goal: string; reasonDone: string; lastSummary?: string; };
+        | { status: "inactive" }
+        | { status: "running"; step: number; goal: string; lastSummary?: string }
+        | { status: "confirming_done"; step: number; goal: string; reasonDone: string; lastSummary?: string }
+        | { status: "done"; step: number; goal: string; reasonDone: string; lastSummary?: string; };
 
 export type FsmEvent =
-    | { type: "START"; goal: string }
-    | { type: "STOP"; reason: string }
-    | { type: "TURN_START" }
-    | { type: "TURN_END" }
-    | { type: "TOOL_LOOP_CONTROL"; action: "next" | "done"; summary: string; reason?: string }
-    | { type: "RECONSTRUCT"; history: any[] };
+        | { type: "START"; goal: string }
+        | { type: "STOP"; reason: string }
+        | { type: "TURN_START" }
+        | { type: "TURN_END" }
+        | { type: "TOOL_LOOP_CONTROL"; action: "next" | "done"; summary: string; reason?: string }
+        | { type: "RECONSTRUCT"; history: any[] };
 
 export function emptyState(): LoopState {
-    return { status: "inactive" };
+        return { status: "inactive" };
 }
 
 export function buildPrompt(state: LoopState): string {

@@ -6,6 +6,7 @@ export class LoopFSM {
     private pi: ExtensionAPI;
     private state: LoopState;
     private turnToolAction: "none" | "next" | "done" = "none";
+    private sawNonLoopTool: boolean = false;
 
     constructor(pi: ExtensionAPI) {
         this.pi = pi;
@@ -13,6 +14,9 @@ export class LoopFSM {
     }
 
     reconstruct(ctx: ExtensionContext) {
+        if (this.state.status === "confirming_done" || this.state.status === "done") {
+            return;
+        }
         let reconstructed = emptyState();
         for (const entry of ctx.sessionManager.getBranch()) {
             if (entry.type === "message" && entry.message.role === "toolResult" && entry.message.toolName === "loop_control") {
@@ -23,13 +27,16 @@ export class LoopFSM {
         this.transition(reconstructed, ctx);
     }
 
-    onTurnStart(ctx: ExtensionContext) {
+    onTurnStart(_ctx: ExtensionContext) {
         if (this.state.status === "inactive" || this.state.status === "done") return;
         this.turnToolAction = "none";
+        this.sawNonLoopTool = false;
     }
 
-    onToolCall(event: any, ctx: ExtensionContext) {
-        // turnToolAction is updated in executeTool when loop_control is called.
+    onToolCall(event: any, _ctx: ExtensionContext) {
+        if (event.toolName !== "loop_control") {
+            this.sawNonLoopTool = true;
+        }
     }
 
     async executeTool(_id: string, params: any, _signal: any, _onUpdate: any, ctx: ExtensionContext) {
@@ -51,6 +58,19 @@ export class LoopFSM {
         if (this.state.status === "running") {
             if (this.turnToolAction === "next") {
                 // Saw the tool call but waiting for onInput to advance, so the LLM can generate text.
+                return;
+            }
+            if (this.turnToolAction === "done") {
+                // State inconsistency: tool said done but state is still running. Mark done directly.
+                const finalReason = "Goal complete";
+                const finalStep = this.state.step;
+                this.transition({ status: "done", step: finalStep, goal: this.state.goal, reasonDone: finalReason, lastSummary: this.state.lastSummary }, ctx);
+                this.pi.sendMessage({ customType: "loop-status", content: `✓ Loop complete after ${finalStep + 1} iteration(s). Reason: ${finalReason}`, display: true, details: { status: "done" } }, { triggerTurn: false, deliverAs: "steer" });
+                return;
+            }
+            if (this.sawNonLoopTool) {
+                // Turn ended after other tools executed; continue the loop rather than scolding.
+                this.pi.sendMessage({ customType: "loop-iteration", content: buildPrompt(this.state), display: true }, { triggerTurn: true, deliverAs: "steer" });
                 return;
             }
             // Fallback: model ended without calling loop_control
@@ -83,6 +103,7 @@ export class LoopFSM {
 
         if (this.state.status === "confirming_done") {
             this.transition({ status: "done", step: this.state.step, goal: this.state.goal, reasonDone: this.state.reasonDone, lastSummary: this.state.lastSummary }, ctx);
+            return { handled: true };
         }
 
         if (this.state.status === "running" && this.turnToolAction === "next") {
